@@ -1,196 +1,187 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-// Scene
-    const scene = new THREE.Scene();
 
-    // Camera
-    const camera = new THREE.PerspectiveCamera(
-      60,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      200
-    );
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.style.margin = "0";
-    document.body.appendChild(renderer.domElement);
+// -------------------- Scene --------------------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
 
-    // Light
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-    dir.position.set(6, 10, 6);
-    scene.add(dir);
-
-    // // Object that will move
-    const mover = new THREE.Mesh(
-      new THREE.BoxGeometry(0.6, 0.6, 0.6),
-      new THREE.MeshStandardMaterial()
-    );
-    scene.add(mover);
-
-    // Create a path (you can change these points)
-    const points = [
-      new THREE.Vector3(-6, 0, -3),
-      new THREE.Vector3(-3, 2,  3),
-      new THREE.Vector3( 0, 0,  6),
-      new THREE.Vector3( 3, 2,  3),
-      new THREE.Vector3( 6, 0, -3),
-      new THREE.Vector3( 0, 1, -6),
-    ];
-
-    // CatmullRomCurve3 makes a smooth curve through the points
-    const curve = new THREE.CatmullRomCurve3(points, true); // true = closed loop
-
-    // --- Ribbon "plane" that follows the curve (top = red, bottom = blue) ---
-
-    const samples = 200;          // how smooth the ribbon is
-    const halfWidth = 0.35;       // half of ribbon width
-
-    const positions = new Float32Array(samples * 2 * 3); // 2 vertices per sample, xyz
-    const colors = new Float32Array(samples * 2 * 3);    // rgb per vertex
-    const indices = [];
-
-    const p = new THREE.Vector3();
-    const tan = new THREE.Vector3();
-    const right = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 1, 0);
-
-    const topColor = new THREE.Color(0xff0000);   // red (up edge)
-    const bottomColor = new THREE.Color(0x0000ff); // blue (down edge)
-
-    for (let i = 0; i < samples; i++) {
-      const t = i / (samples - 1);
-
-      curve.getPointAt(t, p);
-      curve.getTangentAt(t, tan).normalize();
-
-      // Build a "right" vector perpendicular to tangent and world up
-      right.crossVectors(up, tan).normalize();
-
-      // If tangent is parallel to up, cross product becomes zero; handle that
-      if (right.lengthSq() < 1e-10) {
-        right.set(1, 0, 0); // fallback
-      }
-
-      const top = new THREE.Vector3().copy(p).addScaledVector(right, +halfWidth);
-      const bottom = new THREE.Vector3().copy(p).addScaledVector(right, -halfWidth);
-
-      // Write positions
-      const vTop = i * 2;
-      const vBot = i * 2 + 1;
-
-      positions[vTop * 3 + 0] = top.x;
-      positions[vTop * 3 + 1] = top.y;
-      positions[vTop * 3 + 2] = top.z;
-
-      positions[vBot * 3 + 0] = bottom.x;
-      positions[vBot * 3 + 1] = bottom.y;
-      positions[vBot * 3 + 2] = bottom.z;
-
-      // Write colors: top = red, bottom = blue
-      colors[vTop * 3 + 0] = topColor.r;
-      colors[vTop * 3 + 1] = topColor.g;
-      colors[vTop * 3 + 2] = topColor.b;
-
-      colors[vBot * 3 + 0] = bottomColor.r;
-      colors[vBot * 3 + 1] = bottomColor.g;
-      colors[vBot * 3 + 2] = bottomColor.b;
-
-      // Create triangles between this segment and the next
-      if (i < samples - 1) {
-        const a = i * 2;
-        const b = i * 2 + 1;
-        const c = (i + 1) * 2;
-        const d = (i + 1) * 2 + 1;
-
-        // Two triangles: a-b-c and b-d-c
-        indices.push(a, b, c,  b, d, c);
-      }
-    }
-
-    const ribbonGeo = new THREE.BufferGeometry();
-ribbonGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-// (colors not needed for the two-sided material approach)
-// ribbonGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-ribbonGeo.setIndex(indices);
-ribbonGeo.computeVertexNormals();
-
-const matTop = new THREE.MeshBasicMaterial({
-  color: 0xff0000,
-  side: THREE.FrontSide,
-});
-
-const matBottom = new THREE.MeshBasicMaterial({
-  color: 0x0000ff,
-  side: THREE.BackSide,
-});
-
-const ribbonTop = new THREE.Mesh(ribbonGeo, matTop);
-const ribbonBottom = new THREE.Mesh(ribbonGeo, matBottom);
-
-scene.add(ribbonTop);
-scene.add(ribbonBottom);
-
-
-
-
-// const ribbonMesh = new THREE.Mesh(ribbonGeo, ribbonMat);
-// scene.add(ribbonMesh);
-
-
-// Animate along the curve
-const clock = new THREE.Clock();
-const speed = 0.08; // higher = faster
-let t = 0;
-
-// Helper objects reused each frame (for performance)
-const tangent = new THREE.Vector3();
-const tangent2 = new THREE.Vector3();
-const lookTarget = new THREE.Vector3();
-const lookTarget2 = new THREE.Vector3();
-let i = 0;
-
-const tangentArrow = new THREE.ArrowHelper(
-  new THREE.Vector3(1, 0, 0),  // direction (placeholder)
-  new THREE.Vector3(0, 0, 0),  // origin
-  2,                           // length
-  0xffffff                     // red
+// -------------------- Camera --------------------
+const camera = new THREE.PerspectiveCamera(
+  60,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  300
 );
-scene.add(tangentArrow);
+camera.position.set(0, 6, 14);
 
-const controls = new OrbitControls(camera, renderer.domElement)
-controls.enableDamping = true
+// -------------------- Renderer --------------------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.style.margin = "0";
+document.body.appendChild(renderer.domElement);
+
+// -------------------- Lights --------------------
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+dir.position.set(6, 10, 6);
+scene.add(dir);
+
+// Helpers (optional)
+scene.add(new THREE.GridHelper(40, 40));
+scene.add(new THREE.AxesHelper(5));
+
+// -------------------- Controls --------------------
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// -------------------- Path (centerline) --------------------
+const points = [
+  new THREE.Vector3(-6, 0, -3),
+  new THREE.Vector3(-3, 2, 3),
+  new THREE.Vector3(0, 0, 6),
+  new THREE.Vector3(3, 2, 3),
+  new THREE.Vector3(6, 0, -3),
+  new THREE.Vector3(0, 1, -6),
+];
+
+const centerCurve = new THREE.CatmullRomCurve3(points, true);
+centerCurve.curveType = "catmullrom";
+centerCurve.tension = 0.5;
+
+// -------------------- Track settings --------------------
+const gauge = 1.0;        // distance between rails
+const railRadius = 0.05;  // rail thickness
+const railSegments = 500; // smoothness
+
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const tmpRight = new THREE.Vector3();
+const tmpUp = new THREE.Vector3();
+
+// -------------------- Build rail curves (stable, no Frenet twist) --------------------
+const leftPts = [];
+const rightPts = [];
+const tangent = new THREE.Vector3();
+
+for (let i = 0; i <= railSegments; i++) {
+  const t = i / railSegments;
+  const p = centerCurve.getPointAt(t);
+  centerCurve.getTangentAt(t, tangent).normalize();
+
+  // right = WORLD_UP x tangent
+  tmpRight.crossVectors(WORLD_UP, tangent);
+
+  // handle near-parallel case (tangent almost vertical)
+  if (tmpRight.lengthSq() < 1e-8) {
+    tmpRight.crossVectors(new THREE.Vector3(1, 0, 0), tangent);
+  }
+  tmpRight.normalize();
+
+  leftPts.push(p.clone().addScaledVector(tmpRight, +gauge / 2));
+  rightPts.push(p.clone().addScaledVector(tmpRight, -gauge / 2));
+}
+
+const leftCurve = new THREE.CatmullRomCurve3(leftPts, true);
+const rightCurve = new THREE.CatmullRomCurve3(rightPts, true);
+
+// Rails (tubes)
+const railMat = new THREE.MeshStandardMaterial({
+  color: 0x2a2a2f,
+  metalness: 0.85,
+  roughness: 0.25,
+});
+
+const leftRail = new THREE.Mesh(
+  new THREE.TubeGeometry(leftCurve, railSegments, railRadius, 12, true),
+  railMat
+);
+
+const rightRail = new THREE.Mesh(
+  new THREE.TubeGeometry(rightCurve, railSegments, railRadius, 12, true),
+  railMat
+);
+
+scene.add(leftRail);
+scene.add(rightRail);
+
+// -------------------- Sleepers (instanced) --------------------
+const sleeperCount = 100;
+const sleeperSize = new THREE.Vector3(gauge * 1.0, 0.03, 0.25);
+
+const sleeperGeo = new THREE.BoxGeometry(
+  sleeperSize.x,
+  sleeperSize.y,
+  sleeperSize.z
+);
+
+const sleeperMat = new THREE.MeshStandardMaterial({
+  color: 0x7a4a2a,
+  roughness: 0.95,
+  metalness: 0.0,
+});
+
+const sleepers = new THREE.InstancedMesh(sleeperGeo, sleeperMat, sleeperCount);
+scene.add(sleepers);
+
+const m4 = new THREE.Matrix4();
+const quat = new THREE.Quaternion();
+const scale = new THREE.Vector3(1, 1, 1);
+
+for (let i = 0; i < sleeperCount; i++) {
+  const t = i / sleeperCount;
+
+  const p = centerCurve.getPointAt(t);
+  centerCurve.getTangentAt(t, tangent).normalize();
+
+  // right = WORLD_UP x tangent
+  tmpRight.crossVectors(WORLD_UP, tangent);
+  if (tmpRight.lengthSq() < 1e-8) {
+    tmpRight.crossVectors(new THREE.Vector3(1, 0, 0), tangent);
+  }
+  tmpRight.normalize();
+
+  // up = tangent x right  (keeps an orthonormal frame)
+  tmpUp.crossVectors(tangent, tmpRight).normalize();
+
+  // basis: x=right, y=up, z=forward
+  const basis = new THREE.Matrix4().makeBasis(tmpRight, tmpUp, tangent);
+  quat.setFromRotationMatrix(basis);
+
+  // slightly drop sleepers so rails sit above
+  const pos = p.clone().addScaledVector(tmpUp, -0.06);
+
+  m4.compose(pos, quat, scale);
+  sleepers.setMatrixAt(i, m4);
+}
+sleepers.instanceMatrix.needsUpdate = true;
+
+// -------------------- Moving cube (optional) --------------------
+const mover = new THREE.Mesh(
+  new THREE.BoxGeometry(0.4, 0.4, 0.6),
+  new THREE.MeshStandardMaterial({ color: 0xffffff })
+);
+scene.add(mover);
+
+// -------------------- Animate --------------------
+const clock = new THREE.Clock();
+let tMove = 0;
+const speed = 0.03;
+
+const lookTarget = new THREE.Vector3();
+const lift = new THREE.Vector3(0, 0.35, 0);
 
 function animate() {
-  
-
   requestAnimationFrame(animate);
-      const dt = clock.getDelta();
-      t = (t + dt * speed) % 1; // keep it in [0, 1)
 
-        // Position on the curve
-      const pos = curve.getPointAt(t);
-      // const pos2 = curve.getPointAt((t - 0.01) % 1); // a bit ahead for orientation
-      curve.getTangentAt(t, tangent).normalize();
-      // curve.getTangentAt((t - 0.01) % 1, tangent2).normalize();
+  const dt = clock.getDelta();
+  tMove = (tMove + dt * speed) % 1;
 
-      // tangentArrow.position.copy(pos);
-      // tangentArrow.setDirection(tangent);
-      // tangentArrow.setLength(1);
+  const p = centerCurve.getPointAt(tMove);
+  centerCurve.getTangentAt(tMove, tangent).normalize();
 
-      // move camera above the path a bit
-      // camera.position.copy(pos2);
-      camera.position.copy(pos).add(new THREE.Vector3(0, 0.3, 0)); // lift it up a bit
-
-      // look forward
-      lookTarget.copy(pos).add(tangent).add(new THREE.Vector3(0, 0.3, 0)); // look slightly above the path
-      // lookTarget2.copy(pos2).add(tangent2);
-      camera.lookAt(lookTarget);
-      // camera.lookAt(lookTarget2);
-
-
-
+  camera.position.copy(p).add(lift);
+  lookTarget.copy(p).addScaledVector(tangent, 2).add(lift);
+  camera.lookAt(lookTarget);
 
   // controls.update();
   renderer.render(scene, camera);
@@ -198,7 +189,7 @@ function animate() {
 
 animate();
 
-// Resize handling
+// -------------------- Resize --------------------
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
