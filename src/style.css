@@ -3,11 +3,19 @@
   padding: 0;
 }
 
-html,
+/* html,
 body {
   overflow: hidden;
-}
+} */
 
 #webgl-canvas {
   outline: none;
+}
+body{
+  height: 400vh;
+}
+canvas {
+  position: fixed; /* Keeps the 3D scene stuck to the screen while you scroll */
+  top: 0;
+  left: 0;
 }
