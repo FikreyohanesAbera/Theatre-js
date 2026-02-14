@@ -34,6 +34,8 @@ scene.add(new THREE.AxesHelper(5));
 // -------------------- Controls --------------------
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+// NOTE: we are NOT calling controls.update() in the loop,
+// because we’re driving camera lookAt manually for this ride.
 
 // -------------------- Path (centerline) --------------------
 const points = [
@@ -140,7 +142,7 @@ for (let i = 0; i < sleeperCount; i++) {
   }
   tmpRight.normalize();
 
-  // up = tangent x right  (keeps an orthonormal frame)
+  // up = tangent x right (orthonormal frame)
   tmpUp.crossVectors(tangent, tmpRight).normalize();
 
   // basis: x=right, y=up, z=forward
@@ -162,13 +164,30 @@ const mover = new THREE.Mesh(
 );
 scene.add(mover);
 
+// -------------------- Look-at blending helpers --------------------
+function smoothstep(edge0: number, edge1: number, x: number) {
+  const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function pulse(a: number, b: number, c: number, d: number, x: number) {
+  const up = smoothstep(a, b, x);          // 0->1
+  const down = 1 - smoothstep(c, d, x);    // 1->0
+  return Math.min(up, down);               // makes a flat top
+}
+
+const centerPoint = new THREE.Vector3(0, 0, 0); // "the center" to look at
+const forwardLook = new THREE.Vector3();
+const centerLook = new THREE.Vector3();
+const finalLook = new THREE.Vector3();
+
 // -------------------- Animate --------------------
 const clock = new THREE.Clock();
 let tMove = 0;
-const speed = 0.03;
+const speed = 0.06;
 
-const lookTarget = new THREE.Vector3();
 const lift = new THREE.Vector3(0, 0.35, 0);
+const lookAhead = 2.0;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -179,11 +198,28 @@ function animate() {
   const p = centerCurve.getPointAt(tMove);
   centerCurve.getTangentAt(tMove, tangent).normalize();
 
+  // camera rides the path
   camera.position.copy(p).add(lift);
-  lookTarget.copy(p).addScaledVector(tangent, 2).add(lift);
-  camera.lookAt(lookTarget);
 
-  // controls.update();
+  // normal forward-looking target
+  forwardLook.copy(p).addScaledVector(tangent, lookAhead).add(lift);
+
+  // center target
+  centerLook.copy(centerPoint);
+
+  // ---- choose when to look at center ----
+  // Example: look at center between t=0.25 and t=0.35
+  // smoothly blends from forward -> center
+  const w = pulse(0.45, 0.55, 0.6, 0.7, tMove);
+  // blend targetsx 
+  finalLook.lerpVectors(forwardLook, centerLook, w);
+
+  camera.lookAt(finalLook);
+
+  // mover demo (optional)
+  mover.position.copy(p).add(lift);
+  mover.lookAt(forwardLook);
+
   renderer.render(scene, camera);
 }
 
