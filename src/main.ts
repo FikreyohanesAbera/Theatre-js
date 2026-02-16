@@ -217,7 +217,7 @@ function updateSleepers(tMove: number) {
     );
     const pop = THREE.MathUtils.smoothstep(ahead01, 0.0, 0.25);
     const s = THREE.MathUtils.lerp(0.2, 1.0, pop);
-    sleeperScale.set(s, 1, 1);
+    sleeperScale.set(1, 1, 1);
 
     sleeperM4.compose(sleeperPos, sleeperQuat, sleeperScale);
     sleepers.setMatrixAt(i, sleeperM4);
