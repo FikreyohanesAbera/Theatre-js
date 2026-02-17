@@ -59,11 +59,11 @@ controls.enableZoom = false; // keep wheel for page scroll
 // -------------------- Path --------------------
 const points = [
   new THREE.Vector3(-6, 0, -3),
-  new THREE.Vector3(-3, 2, 3),
+  new THREE.Vector3(-3, 0, 3),
   new THREE.Vector3(0, 0, 6),
-  new THREE.Vector3(3, 2, 3),
+  new THREE.Vector3(3, 0, 3),
   new THREE.Vector3(6, 0, -3),
-  new THREE.Vector3(0, 1, -6),
+  new THREE.Vector3(0, 0, -6),
 ];
 
 const centerCurve = new THREE.CatmullRomCurve3(points, true);
