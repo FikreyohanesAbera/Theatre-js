@@ -1,89 +1,171 @@
+// src/main.ts
 import * as THREE from "three";
 import "./style.css";
 
-// ---------- Renderer ----------
+/**
+ * Projects World (single canvas, single renderer) with:
+ * - ONE rectangle (plane) per project
+ * - Project title as floating 3D sprite text ABOVE the rectangle
+ * - Click rectangle to ENTER focus: camera moves in and centers it
+ * - While focused: the rectangle cycles through multiple images
+ * - “All transitions selectable per project”:
+ *    each project defines a transition sequence, and each image swap uses the next transition
+ *
+ * No postprocessing dependency (so it works with your current three version).
+ *
+ * Put your images in /public:
+ *   public/projects/efoyta-1.jpg
+ *   public/projects/efoyta-2.jpg
+ *   public/projects/lockout-1.jpg
+ *   public/projects/lockout-2.jpg
+ *   public/projects/opinion-1.jpg
+ *   public/projects/opinion-2.jpg
+ */
+
+// --------------------------------------------
+// Renderer
+// --------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = false; // keep it cheap (fog + bloom-like feel comes from lighting)
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 document.body.appendChild(renderer.domElement);
 
-// ---------- Scene ----------
+// --------------------------------------------
+// Scene
+// --------------------------------------------
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf3d8e4); // soft pink sky
-scene.fog = new THREE.FogExp2(0xf3d8e4, 0.135); // dial density
+scene.background = new THREE.Color(0x05040a);
+scene.fog = new THREE.FogExp2(0x090614, 0.07);
 
-// ---------- Camera ----------
-const camera = new THREE.PerspectiveCamera(
-  55,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  500
-);
-camera.position.set(0, 1.6, 6);
+// --------------------------------------------
+// Camera
+// --------------------------------------------
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 800);
+camera.position.set(0, 1.65, 6);
 
-// ---------- Lights ----------
-const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-scene.add(ambient);
+// --------------------------------------------
+// Lights
+// --------------------------------------------
+scene.add(new THREE.AmbientLight(0xffffff, 0.12));
 
-// warm key from front-right
-const key = new THREE.DirectionalLight(0xfff0d8, 1.2);
-key.position.set(8, 10, 6);
-scene.add(key);
+const purpleRim = new THREE.DirectionalLight(0xb45cff, 0.95);
+purpleRim.position.set(-10, 10, 6);
+scene.add(purpleRim);
 
-// cool rim from left
-const rim = new THREE.DirectionalLight(0xd6f0ff, 0.65);
-rim.position.set(-10, 6, -6);
-scene.add(rim);
+const cyanRim = new THREE.DirectionalLight(0x2de2ff, 0.75);
+cyanRim.position.set(10, 7, -10);
+scene.add(cyanRim);
 
-// horizon glow (makes fog “breathe”)
-const horizonGlow = new THREE.PointLight(0xffd1e6, 1.2, 80, 2);
-horizonGlow.position.set(0, 2.5, -45);
-scene.add(horizonGlow);
+const pinkGlow = new THREE.PointLight(0xff3ea5, 2.6, 90, 2);
+pinkGlow.position.set(0, 2.2, -65);
+scene.add(pinkGlow);
 
-// ---------- Helpers: Path Curve ----------
+const cyanGlow = new THREE.PointLight(0x2de2ff, 1.35, 60, 2);
+cyanGlow.position.set(1.5, 1.6, -30);
+scene.add(cyanGlow);
+
+// --------------------------------------------
+// Helpers
+// --------------------------------------------
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+function smoothstep(edge0: number, edge1: number, x: number) {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
+function makeEmissiveMaterial(emissiveHex: number, intensity: number) {
+  return new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: emissiveHex,
+    emissiveIntensity: intensity,
+    roughness: 1,
+    metalness: 0,
+  });
+}
+
+const tmpMat = new THREE.Matrix4();
+const tmpUp = new THREE.Vector3(0, 1, 0);
+const tmpQuat = new THREE.Quaternion();
+function lookAtQuaternion(from: THREE.Vector3, to: THREE.Vector3) {
+  tmpMat.lookAt(from, to, tmpUp);
+  tmpQuat.setFromRotationMatrix(tmpMat);
+  return tmpQuat;
+}
+
+function expMoveVec3(current: THREE.Vector3, target: THREE.Vector3, dt: number, speed: number) {
+  const t = 1 - Math.pow(1 - speed, dt * 60);
+  current.lerp(target, t);
+}
+
+function expMoveNumber(current: number, target: number, dt: number, speed: number) {
+  const t = 1 - Math.pow(1 - speed, dt * 60);
+  return current + (target - current) * t;
+}
+
+// --------------------------------------------
+// Curve (camera travel path)
+// --------------------------------------------
 const curve = new THREE.CatmullRomCurve3(
   [
     new THREE.Vector3(0, 0, 6),
-    new THREE.Vector3(-1.2, 0, -8),
-    new THREE.Vector3(0.8, 0, -20),
-    new THREE.Vector3(0.2, 0, -34),
-    new THREE.Vector3(-0.8, 0, -48),
+    new THREE.Vector3(-1.3, 0, -10),
+    new THREE.Vector3(1.2, 0, -24),
+    new THREE.Vector3(0.4, 0, -38),
+    new THREE.Vector3(-1.0, 0, -58),
+    new THREE.Vector3(-0.2, 0, -82),
+    new THREE.Vector3(0.6, 0, -104),
+    new THREE.Vector3(-0.5, 0, -128),
   ],
   false,
   "catmullrom",
   0.25
 );
 
-const pathLength = 60; // how far camera will travel
-const PATH_WIDTH = 2.2;
+const PATH_WIDTH = 3.0;
 
-// ---------- Ground (simple plane) ----------
-const groundGeo = new THREE.PlaneGeometry(60, 120, 1, 1);
+function approximateDistanceToPath(x: number, z: number) {
+  let best = Infinity;
+  for (let i = 0; i <= 90; i++) {
+    const t = i / 90;
+    const p = curve.getPoint(t);
+    const dx = x - p.x;
+    const dz = z - p.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < best) best = d2;
+  }
+  return Math.sqrt(best);
+}
+
+function isOnRoad(x: number, z: number) {
+  return approximateDistanceToPath(x, z) < PATH_WIDTH * 0.6;
+}
+
+// --------------------------------------------
+// Ground and Road
+// --------------------------------------------
+const groundGeo = new THREE.PlaneGeometry(160, 260, 1, 1);
 groundGeo.rotateX(-Math.PI / 2);
-const groundMat = new THREE.MeshStandardMaterial({
-  color: 0xf6dbe7,
-  roughness: 1,
-  metalness: 0,
-});
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x07050d, roughness: 1.0, metalness: 0.0 });
 const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.position.set(0, -0.02, -30);
+ground.position.set(0, -0.06, -85);
 scene.add(ground);
 
-// ---------- Path Mesh (simple ribbon following curve) ----------
-function buildPathRibbon(curve: THREE.CatmullRomCurve3, width: number, segments = 200) {
-  const pts = curve.getPoints(segments);
+function buildRoadRibbon(c: THREE.CatmullRomCurve3, width: number, segments = 320) {
+  const pts = c.getPoints(segments);
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
 
-  // build a camera-facing-ish ribbon on XZ plane
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
     const t = i / (pts.length - 1);
 
-    const tangent = curve.getTangent(t).normalize();
+    const tangent = c.getTangent(t).normalize();
     const left = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), tangent).normalize();
 
     const a = new THREE.Vector3().copy(p).addScaledVector(left, width * 0.5);
@@ -106,215 +188,712 @@ function buildPathRibbon(curve: THREE.CatmullRomCurve3, width: number, segments 
   geo.computeVertexNormals();
 
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xd8d8de, // concrete-ish
-    roughness: 0.95,
-    metalness: 0,
+    color: 0x14101f,
+    roughness: 0.22,
+    metalness: 0.35,
   });
 
   return new THREE.Mesh(geo, mat);
 }
+scene.add(buildRoadRibbon(curve, PATH_WIDTH, 320));
 
-const path = buildPathRibbon(curve, PATH_WIDTH, 220);
-scene.add(path);
+// --------------------------------------------
+// Neon edge dots
+// --------------------------------------------
+const dotGeo = new THREE.SphereGeometry(0.06, 10, 10);
+const dotMatCyan = makeEmissiveMaterial(0x2de2ff, 4.8);
+const dotMatPink = makeEmissiveMaterial(0xff3ea5, 4.8);
 
-// ---------- Path Lights (small emissive dots) ----------
-const dotGeo = new THREE.SphereGeometry(0.035, 8, 8);
-const dotMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff,
-  emissive: 0xffd7ef,
-  emissiveIntensity: 2.2,
-  roughness: 1,
-});
-
-const DOT_COUNT = 120;
-const dots = new THREE.InstancedMesh(dotGeo, dotMat, DOT_COUNT);
-dots.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-scene.add(dots);
+const DOT_COUNT = 210;
+const dotsCyan = new THREE.InstancedMesh(dotGeo, dotMatCyan, Math.ceil(DOT_COUNT / 2));
+const dotsPink = new THREE.InstancedMesh(dotGeo, dotMatPink, Math.floor(DOT_COUNT / 2));
+scene.add(dotsCyan, dotsPink);
 
 {
   const dummy = new THREE.Object3D();
+  let c = 0;
+  let p = 0;
+
   for (let i = 0; i < DOT_COUNT; i++) {
     const t = i / (DOT_COUNT - 1);
-    const p = curve.getPoint(t);
+    const pt = curve.getPoint(t);
     const tangent = curve.getTangent(t).normalize();
     const left = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), tangent).normalize();
 
     const side = i % 2 === 0 ? 1 : -1;
-    const offset = (PATH_WIDTH * 0.5 - 0.08) * side;
+    const offset = (PATH_WIDTH * 0.5 - 0.12) * side;
 
-    dummy.position.set(p.x + left.x * offset, 0.05, p.z + left.z * offset);
-    dummy.rotation.set(0, 0, 0);
-    dummy.scale.setScalar(1);
+    dummy.position.set(pt.x + left.x * offset, 0.06, pt.z + left.z * offset);
     dummy.updateMatrix();
-    dots.setMatrixAt(i, dummy.matrix);
+
+    if (i % 2 === 0) dotsCyan.setMatrixAt(c++, dummy.matrix);
+    else dotsPink.setMatrixAt(p++, dummy.matrix);
   }
-  dots.instanceMatrix.needsUpdate = true;
+  dotsCyan.instanceMatrix.needsUpdate = true;
+  dotsPink.instanceMatrix.needsUpdate = true;
 }
 
-// ---------- Pink Leaf Carpet (instanced low-poly “chips”) ----------
-const leafGeo = new THREE.IcosahedronGeometry(0.06, 0); // cheap low-poly leaf chunk
-const leafMat = new THREE.MeshStandardMaterial({
-  color: 0xff7fb0,
-  roughness: 1,
-  metalness: 0,
-});
+// --------------------------------------------
+// Buildings (cheap silhouettes)
+// --------------------------------------------
+const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
+const buildingMat = new THREE.MeshStandardMaterial({ color: 0x0c0913, roughness: 1, metalness: 0 });
 
-const LEAF_COUNT = 9000;
-const leaves = new THREE.InstancedMesh(leafGeo, leafMat, LEAF_COUNT);
-leaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-scene.add(leaves);
-
-function isNearPath(x: number, z: number) {
-  // approximate distance to curve by sampling nearest t (cheap enough for build-time)
-  // for speed, we just estimate using a few samples.
-  let best = Infinity;
-  for (let i = 0; i <= 40; i++) {
-    const t = i / 40;
-    const p = curve.getPoint(t);
-    const dx = x - p.x;
-    const dz = z - p.z;
-    const d2 = dx * dx + dz * dz;
-    if (d2 < best) best = d2;
-  }
-  const dist = Math.sqrt(best);
-  return dist < PATH_WIDTH * 0.62; // inside/near the path
-}
+const BUILDING_COUNT = 220;
+const buildings = new THREE.InstancedMesh(buildingGeo, buildingMat, BUILDING_COUNT);
+scene.add(buildings);
 
 {
-  const dummy = new THREE.Object3D();
-  let placed = 0;
-  const rand = (a: number, b: number) => a + Math.random() * (b - a);
+  const d = new THREE.Object3D();
 
-  // scatter in a corridor volume around the path
-  while (placed < LEAF_COUNT) {
-    const x = rand(-10, 10);
-    const z = rand(6, -60);
+  for (let i = 0; i < BUILDING_COUNT; i++) {
+    let x = 0;
+    let z = 0;
 
-    // reject samples that land on the walking path
-    if (isNearPath(x, z)) continue;
-
-    dummy.position.set(x, rand(-0.01, 0.05), z);
-    dummy.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
-    const s = rand(0.6, 1.5);
-    dummy.scale.setScalar(s);
-    dummy.updateMatrix();
-    leaves.setMatrixAt(placed, dummy.matrix);
-    placed++;
-  }
-  leaves.instanceMatrix.needsUpdate = true;
-}
-
-// ---------- Palms (basic shapes, instanced) ----------
-const trunkGeo = new THREE.CylinderGeometry(0.07, 0.12, 3.2, 6);
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6a4a3a, roughness: 1 });
-const frondGeo = new THREE.ConeGeometry(0.9, 1.4, 6, 1);
-const frondMat = new THREE.MeshStandardMaterial({ color: 0x2f7a55, roughness: 1 });
-
-const PALM_COUNT = 16;
-const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, PALM_COUNT);
-const fronds = new THREE.InstancedMesh(frondGeo, frondMat, PALM_COUNT * 3);
-scene.add(trunks, fronds);
-
-{
-  const dummy = new THREE.Object3D();
-  const fDummy = new THREE.Object3D();
-  const rand = (a: number, b: number) => a + Math.random() * (b - a);
-
-  for (let i = 0; i < PALM_COUNT; i++) {
-    // place palms along sides with variation
-    const t = (i + 2) / (PALM_COUNT + 3);
-    const p = curve.getPoint(t);
-    const tangent = curve.getTangent(t).normalize();
-    const left = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), tangent).normalize();
-
-    const side = i % 2 === 0 ? 1 : -1;
-    const dist = rand(2.6, 6.5);
-    const x = p.x + left.x * dist * side + rand(-0.6, 0.6);
-    const z = p.z + left.z * dist * side + rand(-0.6, 0.6);
-
-    const lean = rand(-0.18, 0.18);
-    dummy.position.set(x, 1.6, z);
-    dummy.rotation.set(0, rand(-0.4, 0.4), lean);
-    dummy.scale.setScalar(rand(0.85, 1.25));
-    dummy.updateMatrix();
-    trunks.setMatrixAt(i, dummy.matrix);
-
-    // fronds: 3 cones around top
-    for (let k = 0; k < 3; k++) {
-      const idx = i * 3 + k;
-      fDummy.position.set(x, 3.3, z);
-      fDummy.rotation.set(rand(-0.9, -0.2), (k / 3) * Math.PI * 2 + rand(-0.4, 0.4), rand(-0.4, 0.4));
-      fDummy.scale.set(rand(0.65, 1.05), rand(0.9, 1.2), rand(0.65, 1.05));
-      fDummy.updateMatrix();
-      fronds.setMatrixAt(idx, fDummy.matrix);
+    for (let tries = 0; tries < 30; tries++) {
+      const side = i % 2 === 0 ? 1 : -1;
+      x = side * rand(5.0, 19.0);
+      z = rand(6, -150);
+      if (!isOnRoad(x, z)) break;
     }
+
+    const h = rand(4, 28);
+    const sx = rand(1.2, 5.0);
+    const sz = rand(1.2, 7.0);
+
+    d.scale.set(sx, h, sz);
+    d.position.set(x, h * 0.5 - 0.02, z);
+    d.rotation.y = rand(-0.35, 0.35);
+    d.updateMatrix();
+    buildings.setMatrixAt(i, d.matrix);
   }
-  trunks.instanceMatrix.needsUpdate = true;
-  fronds.instanceMatrix.needsUpdate = true;
+
+  buildings.instanceMatrix.needsUpdate = true;
 }
 
-// ---------- Floating Particles (Points) ----------
-const particleCount = 22000;
+// --------------------------------------------
+// Fog particles
+// --------------------------------------------
+const particleCount = 3600;
 const particleGeo = new THREE.BufferGeometry();
 const particlePos = new Float32Array(particleCount * 3);
 const particleSpd = new Float32Array(particleCount);
 
 for (let i = 0; i < particleCount; i++) {
   const ix = i * 3;
-  particlePos[ix + 0] = (Math.random() - 0.5) * 28;
-  particlePos[ix + 1] = Math.random() * 8.5;
-  particlePos[ix + 2] = 6 - Math.random() * 70;
-  particleSpd[i] = 0.2 + Math.random() * 3.8;
+  particlePos[ix + 0] = (Math.random() - 0.5) * 46;
+  particlePos[ix + 1] = Math.random() * 12;
+  particlePos[ix + 2] = 10 - Math.random() * 170;
+  particleSpd[i] = 0.15 + Math.random() * 0.9;
 }
 particleGeo.setAttribute("position", new THREE.BufferAttribute(particlePos, 3));
 
 const particleMat = new THREE.PointsMaterial({
-  size: 0.03,
+  size: 0.035,
   color: 0xffffff,
   transparent: true,
-  opacity: 0.75,
+  opacity: 0.35,
   depthWrite: false,
 });
 const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
-// ---------- Optional Hero Glow Orb (cheap “sun”) ----------
+// --------------------------------------------
+// Distant glow orb
+// --------------------------------------------
 const orb = new THREE.Mesh(
-  new THREE.SphereGeometry(1.6, 18, 18),
+  new THREE.SphereGeometry(1.9, 18, 18),
   new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    emissive: 0xffc2de,
-    emissiveIntensity: 1.6,
+    emissive: 0xff3ea5,
+    emissiveIntensity: 2.2,
     roughness: 1,
+    metalness: 0,
   })
 );
-orb.position.set(0.8, 2.8, -42);
+orb.position.set(0.6, 3.2, -112);
 scene.add(orb);
 
-// ---------- Scroll -> Camera progression ----------
-let targetT = 0; // 0..1 along curve
-let currentT = 0;
+// ============================================================
+// PROJECT STATIONS (ONE rectangle + title above)
+// ============================================================
 
-function clamp01(v: number) {
-  return Math.max(0, Math.min(1, v));
+/**
+ * Transition types (integer codes used in shader):
+ * 0 = Crossfade
+ * 1 = Noise dissolve
+ * 2 = Diagonal wipe
+ * 3 = Scanline reveal
+ * 4 = Glitch RGB split
+ * 5 = Ripple distortion
+ */
+type TransitionType = 0 | 1 | 2 | 3 | 4 | 5;
+
+type Project = {
+  id: string;
+  title: string;
+  dates: string;
+  tech: string;
+  bullets: string[];
+  imageUrls: string[];
+  stationT: number;
+  side: 1 | -1;
+  accent: number;
+
+  // “All transitions selectable per project”:
+  // each swap uses the next type from this list (looping).
+  transitions: TransitionType[];
+};
+
+const projects: Project[] = [
+  {
+    id: "efoyta",
+    title: "Efoyta Doctor Appointment Website",
+    dates: "Oct 2023 – Jan 2024",
+    tech: "React, Node.js (Express), PostgreSQL, Stripe",
+    bullets: [
+      "Built a telemedicine platform allowing patients to find doctors, book appointments, and pay online, improving booking efficiency by 40% compared to manual scheduling.",
+      "Designed and deployed an admin dashboard for monitoring doctor availability and patient activity, reducing admin overhead by 25%.",
+    ],
+    imageUrls: ["/ok.png", "/track_tile.png"],
+    stationT: 0.28,
+    side: 1,
+    accent: 0x2de2ff,
+    transitions: [3, 1, 4, 0, 5],
+  },
+  {
+    id: "lockout",
+    title: "Competitive Programming Lockout Web App",
+    dates: "Jun 2025 – Sep 2025",
+    tech: "Go, React, WebSockets, PostgreSQL",
+    bullets: [
+      "Built a real-time competitive programming platform supporting 1v1, 2v2, and rated lockout modes, with screen sharing, chat, and spectator functionalities.",
+      "Implemented concurrency controls and WebSockets, enabling 100+ simultaneous players with under 200ms latency.",
+    ],
+    imageUrls: ["/projects/lockout-1.jpg", "/projects/lockout-2.jpg"],
+    stationT: 0.56,
+    side: -1,
+    accent: 0xff3ea5,
+    transitions: [4, 1, 2, 5, 0, 3],
+  },
+  {
+    id: "opinion",
+    title: "Multimodal Social Media Brand Opinion Mining",
+    dates: "Oct 2025 – Dec 2025",
+    tech: "Next.js, FastAPI, PyTorch",
+    bullets: [
+      "Built an end-to-end social media analytics pipeline for brand opinion mining, aggregating content from YouTube, Instagram, and Facebook and producing actionable sentiment and trend insights.",
+      "Implemented data cleaning and topic/theme extraction to summarize key drivers of positive and negative sentiment across platforms.",
+    ],
+    imageUrls: ["/projects/opinion-1.jpg", "/projects/opinion-2.jpg"],
+    stationT: 0.83,
+    side: 1,
+    accent: 0xb45cff,
+    transitions: [5, 3, 1, 4, 0],
+  },
+];
+
+// --------------------------------------------
+// Texture loading + placeholders
+// --------------------------------------------
+const texLoader = new THREE.TextureLoader();
+texLoader.setCrossOrigin("anonymous");
+
+function makeNeonPlaceholderTexture(label: string, accentHex: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 640;
+  const ctx = canvas.getContext("2d")!;
+  const accent = `#${accentHex.toString(16).padStart(6, "0")}`;
+
+  ctx.fillStyle = "#07050d";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const g = ctx.createRadialGradient(660, 180, 60, 660, 180, 950);
+  g.addColorStop(0, "rgba(255,255,255,0.08)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.globalAlpha = 0.70;
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = accent;
+  ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
+
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.font = "800 44px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("ADD PROJECT IMAGE", 64, 120);
+
+  ctx.fillStyle = "rgba(255,255,255,0.70)";
+  ctx.font = "600 28px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(label, 64, 175);
+
+  ctx.fillStyle = accent;
+  ctx.font = "700 22px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("Place files in /public/projects/…", 64, canvas.height - 72);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.needsUpdate = true;
+  return tex;
 }
+
+function loadImageTexture(url: string, fallback: THREE.Texture) {
+  return new Promise<THREE.Texture>((resolve) => {
+    texLoader.load(
+      url,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        resolve(tex);
+      },
+      undefined,
+      () => resolve(fallback)
+    );
+  });
+}
+
+// --------------------------------------------
+// Title sprite (canvas -> texture -> sprite)
+// --------------------------------------------
+function makeTitleSprite(text: string, accentHex: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d")!;
+
+  const accent = `#${accentHex.toString(16).padStart(6, "0")}`;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // glow behind
+  ctx.globalAlpha = 0.65;
+  ctx.fillStyle = accent;
+  ctx.font = "900 72px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(text, 52, 156);
+
+  // main text
+  ctx.globalAlpha = 1.0;
+  ctx.fillStyle = "rgba(255,255,255,0.96)";
+  ctx.font = "900 72px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(text, 48, 152);
+
+  // underline
+  ctx.globalAlpha = 0.75;
+  ctx.fillStyle = accent;
+  ctx.fillRect(48, 176, 780, 8);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.needsUpdate = true;
+
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    depthWrite: false,
+  });
+
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(5.4, 1.35, 1);
+  return sprite;
+}
+
+// ============================================================
+// Shader for image transitions (single rectangle per project)
+// ============================================================
+
+const transitionVertex = `
+varying vec2 vUv;
+
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const transitionFragment = `
+precision highp float;
+
+varying vec2 vUv;
+
+uniform sampler2D uTexA;
+uniform sampler2D uTexB;
+
+uniform float uProgress;        // 0 -> 1
+uniform float uTime;
+uniform float uTransition;      // integer code, but passed as float
+uniform float uNoiseScale;
+uniform float uGlitchStrength;
+
+uniform vec3 uTint;             // subtle tint to make it sit in the world
+uniform float uVignette;        // 0..1
+
+float hash(vec2 p) {
+  // cheap hash
+  p = fract(p * vec2(123.34, 345.45));
+  p += dot(p, p + 34.345);
+  return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
+vec4 sampleTex(sampler2D t, vec2 uv) {
+  return texture2D(t, uv);
+}
+
+vec3 applyVignette(vec3 col, vec2 uv, float strength) {
+  vec2 p = uv * 2.0 - 1.0;
+  float v = 1.0 - strength * dot(p, p);
+  v = clamp(v, 0.0, 1.0);
+  return col * v;
+}
+
+void main() {
+  float p = clamp(uProgress, 0.0, 1.0);
+  float tr = floor(uTransition + 0.5);
+
+  vec2 uv = vUv;
+
+  // subtle camera-like vignette always on (cinematic)
+  float vign = uVignette;
+
+  vec4 a = sampleTex(uTexA, uv);
+  vec4 b = sampleTex(uTexB, uv);
+
+  // 0 = Crossfade
+  if (tr < 0.5) {
+    vec3 col = mix(a.rgb, b.rgb, p);
+
+    // tiny film noise
+    float n = noise(uv * 220.0 + uTime * 0.8) * 0.03;
+    col += n;
+
+    col = applyVignette(col, uv, vign);
+    col *= (0.92 + 0.08 * uTint);
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+
+  // 1 = Noise dissolve
+  if (tr < 1.5) {
+    float n = noise(uv * (uNoiseScale * 2.0) + uTime * 0.4);
+    float thresh = smoothstep(p - 0.08, p + 0.08, n);
+    vec3 col = mix(a.rgb, b.rgb, thresh);
+
+    // add sparkle
+    float grain = noise(uv * 380.0 + uTime * 1.2) * 0.04;
+    col += grain * (0.4 + 0.6 * thresh);
+
+    col = applyVignette(col, uv, vign);
+    col *= (0.92 + 0.08 * uTint);
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+
+  // 2 = Diagonal wipe
+  if (tr < 2.5) {
+    float diag = uv.x * 0.9 + uv.y * 0.9;
+    float edge = smoothstep(p - 0.07, p + 0.07, diag);
+    vec3 col = mix(a.rgb, b.rgb, edge);
+
+    // neon edge line
+    float line = smoothstep(p - 0.01, p + 0.01, diag) - smoothstep(p + 0.01, p + 0.03, diag);
+    col += line * (0.25 * uTint + vec3(0.10));
+
+    col = applyVignette(col, uv, vign);
+    col *= (0.92 + 0.08 * uTint);
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+
+  // 3 = Scanline reveal
+  if (tr < 3.5) {
+    float y = uv.y;
+    float edge = smoothstep(p - 0.06, p + 0.06, y);
+    vec3 col = mix(a.rgb, b.rgb, edge);
+
+    float scan = sin((uv.y + uTime * 0.8) * 240.0) * 0.02;
+    col += scan * (0.4 + 0.6 * edge);
+
+    col = applyVignette(col, uv, vign);
+    col *= (0.92 + 0.08 * uTint);
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+
+  // 4 = Glitch RGB split
+  if (tr < 4.5) {
+    float g = noise(vec2(uTime * 2.0, uv.y * 8.0));
+    float burst = smoothstep(0.78, 0.98, g);
+    float shift = burst * uGlitchStrength * (0.02 + 0.02 * sin(uTime * 25.0));
+
+    // smear horizontally
+    vec2 uvR = uv + vec2( shift, 0.0);
+    vec2 uvG = uv + vec2(-shift * 0.5, 0.0);
+    vec2 uvB = uv + vec2(-shift, 0.0);
+
+    vec3 aCol = vec3(sampleTex(uTexA, uvR).r, sampleTex(uTexA, uvG).g, sampleTex(uTexA, uvB).b);
+    vec3 bCol = vec3(sampleTex(uTexB, uvR).r, sampleTex(uTexB, uvG).g, sampleTex(uTexB, uvB).b);
+
+    float edge = smoothstep(p - 0.08, p + 0.08, noise(uv * (uNoiseScale * 1.6) + uTime));
+    vec3 col = mix(aCol, bCol, edge);
+
+    // scan crackle
+    float crack = (noise(vec2(uv.y * 60.0, uTime * 4.0)) - 0.5) * 0.06 * burst;
+    col += crack;
+
+    col = applyVignette(col, uv, vign);
+    col *= (0.92 + 0.08 * uTint);
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+
+  // 5 = Ripple distortion
+  {
+    vec2 center = vec2(0.5, 0.5);
+    vec2 d = uv - center;
+    float dist = length(d);
+
+    float wave = sin(18.0 * dist - uTime * 5.0) * 0.012;
+    float amp = smoothstep(0.0, 1.0, p) * smoothstep(1.0, 0.0, dist * 1.4);
+    vec2 rip = uv + normalize(d + 1e-6) * wave * amp;
+
+    vec3 colA = sampleTex(uTexA, rip).rgb;
+    vec3 colB = sampleTex(uTexB, rip).rgb;
+
+    float edge = smoothstep(p - 0.08, p + 0.08, dist + noise(uv * (uNoiseScale * 1.2) + uTime * 0.7) * 0.08);
+    vec3 col = mix(colA, colB, edge);
+
+    col = applyVignette(col, uv, vign);
+    col *= (0.92 + 0.08 * uTint);
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+}
+`;
+
+// --------------------------------------------
+// Station runtime
+// --------------------------------------------
+type StationRuntime = {
+  project: Project;
+  group: THREE.Group;
+
+  // For distance reveal
+  anchor: THREE.Vector3;
+
+  // The clickable rectangle
+  plane: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
+
+  // Title above
+  title: THREE.Sprite;
+
+  // Glow frame behind plane
+  frame1: THREE.Mesh;
+  frame2: THREE.Mesh;
+
+  // Beacon for visibility
+  beacon: THREE.Mesh;
+
+  // Images
+  textures: THREE.Texture[];
+  imageIndex: number;
+
+  // Transition selection
+  transitionIndex: number;
+
+  // Shader control
+  progress: number;
+  swapping: boolean;
+
+  // Focus-only automatic cycling
+  nextSwapAt: number;
+};
+
+const stations: StationRuntime[] = [];
+const interactables: THREE.Object3D[] = [];
+
+// --------------------------------------------
+// Focus system
+// --------------------------------------------
+type FocusMode = {
+  stationId: string;
+  object: THREE.Object3D;
+
+  // Camera pose for focus
+  camPos: THREE.Vector3;
+  lookAt: THREE.Vector3;
+
+  // Return to rail
+  returnT: number;
+};
+
+let focus: FocusMode | null = null;
+
+// --------------------------------------------
+// Create project stations
+// --------------------------------------------
+function makeGlowFrame(width: number, height: number, accentHex: number, opacity: number) {
+  const frameGeo = new THREE.PlaneGeometry(width * 1.12, height * 1.12);
+  const frameMat = new THREE.MeshBasicMaterial({
+    color: accentHex,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(frameGeo, frameMat);
+  return mesh;
+}
+
+async function createStations() {
+  for (const p of projects) {
+    const group = new THREE.Group();
+    group.name = `ProjectStation_${p.id}`;
+
+    const t = p.stationT;
+    const anchor = curve.getPoint(t);
+    const tangent = curve.getTangent(t).normalize();
+    const left = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), tangent).normalize();
+
+    // Where the station lives (to the side of the path)
+    const sideOffset = p.side * (PATH_WIDTH * 0.5 + 3.0);
+    const basePos = new THREE.Vector3().copy(anchor).addScaledVector(left, sideOffset);
+    basePos.y = 1.9;
+
+    // Plane size (single rectangle)
+    const planeW = 3.25;
+    const planeH = 2.05;
+
+    // Load images for this project
+    const fallbackA = makeNeonPlaceholderTexture(`${p.title} (A)`, p.accent);
+    const fallbackB = makeNeonPlaceholderTexture(`${p.title} (B)`, p.accent);
+
+    const texA = await loadImageTexture(p.imageUrls[0] ?? "", fallbackA);
+    const texB = await loadImageTexture(p.imageUrls[1] ?? "", fallbackB);
+
+    const textures = [texA, texB];
+
+    // Shader material (single plane supports two textures and a progress)
+    const shaderMat = new THREE.ShaderMaterial({
+      vertexShader: transitionVertex,
+      fragmentShader: transitionFragment,
+      transparent: false,
+      depthWrite: true,
+      uniforms: {
+        uTexA: { value: textures[0] },
+        uTexB: { value: textures[1] },
+        uProgress: { value: 0.0 },
+        uTime: { value: 0.0 },
+        uTransition: { value: p.transitions[0] ?? 0 },
+        uNoiseScale: { value: 6.0 },
+        uGlitchStrength: { value: 1.0 },
+        uTint: { value: new THREE.Color(p.accent).multiplyScalar(0.35) },
+        uVignette: { value: 0.35 },
+      },
+    });
+
+    // Make the plane “pop” under tone mapping (so neon tint stays vivid)
+  
+    shaderMat.toneMapped = false;
+
+    const planeGeo = new THREE.PlaneGeometry(planeW, planeH);
+    const plane = new THREE.Mesh(planeGeo, shaderMat);
+
+    // Make the plane face the road (toward anchor)
+    const lookTarget = new THREE.Vector3(anchor.x, 1.75, anchor.z);
+    plane.position.copy(basePos);
+    plane.lookAt(lookTarget);
+    plane.userData = { stationId: p.id, kind: "projectPlane" };
+    group.add(plane);
+
+    // Title above plane
+    const title = makeTitleSprite(p.title, p.accent);
+    title.position.copy(basePos);
+    title.position.y += planeH * 0.72;
+    title.position.addScaledVector(tangent, 0.12); // slight “forward” nudge
+    title.material.depthWrite = false;
+    group.add(title);
+
+    // Frame glow behind
+    const frame1 = makeGlowFrame(planeW, planeH, p.accent, 0.10);
+    frame1.position.copy(basePos).add(new THREE.Vector3(0, 0, -0.03));
+    frame1.quaternion.copy(plane.quaternion);
+    group.add(frame1);
+
+    const frame2 = makeGlowFrame(planeW, planeH, p.accent, 0.06);
+    frame2.position.copy(basePos).add(new THREE.Vector3(0, 0, -0.07));
+    frame2.quaternion.copy(plane.quaternion);
+    group.add(frame2);
+
+    // Beacon
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.10, 14, 14), makeEmissiveMaterial(p.accent, 6.0));
+    beacon.position.copy(basePos);
+    beacon.position.y += planeH * 0.9;
+    beacon.position.addScaledVector(left, -p.side * 0.55);
+    group.add(beacon);
+
+    scene.add(group);
+
+    const runtime: StationRuntime = {
+      project: p,
+      group,
+      anchor: anchor.clone(),
+      plane,
+      title,
+      frame1,
+      frame2,
+      beacon,
+      textures,
+      imageIndex: 0,
+      transitionIndex: 0,
+      progress: 0,
+      swapping: false,
+      nextSwapAt: 0,
+    };
+
+    stations.push(runtime);
+    interactables.push(plane);
+  }
+}
+createStations().catch((e) => console.error("Station creation failed:", e));
+
+// ============================================================
+// Scroll travel (path progress)
+// ============================================================
+let targetT = 0;
+let currentT = 0;
 
 window.addEventListener(
   "wheel",
   (e) => {
-    // scroll forward/back along the curve
+    if (focus) return;
     const delta = Math.sign(e.deltaY) * 0.02;
     targetT = clamp01(targetT + delta);
   },
   { passive: true }
 );
 
-// touch / trackpad friendly
 let touchY = 0;
 window.addEventListener("touchstart", (e) => (touchY = e.touches[0]?.clientY ?? 0), { passive: true });
 window.addEventListener(
   "touchmove",
   (e) => {
+    if (focus) return;
     const y = e.touches[0]?.clientY ?? touchY;
     const dy = y - touchY;
     touchY = y;
@@ -323,37 +902,252 @@ window.addEventListener(
   { passive: true }
 );
 
-// ---------- Animate ----------
+// ============================================================
+// Raycasting (hover + click)
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const mouseNdc = new THREE.Vector2();
+
+function updateMouseNdcFromEvent(ev: PointerEvent) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const x = (ev.clientX - rect.left) / rect.width;
+  const y = (ev.clientY - rect.top) / rect.height;
+  mouseNdc.set(x * 2 - 1, -(y * 2 - 1));
+}
+
+function pickObject(): THREE.Intersection<THREE.Object3D> | null {
+  raycaster.setFromCamera(mouseNdc, camera);
+  const hits = raycaster.intersectObjects(interactables, false);
+  return hits.length > 0 ? hits[0] : null;
+}
+
+function setCursorPointer(isPointer: boolean) {
+  document.body.style.cursor = isPointer ? "pointer" : "default";
+}
+
+window.addEventListener(
+  "pointermove",
+  (ev) => {
+    updateMouseNdcFromEvent(ev);
+    const hit = pickObject();
+    setCursorPointer(!!hit?.object);
+  },
+  { passive: true }
+);
+
+function findStationById(id: string) {
+  return stations.find((s) => s.project.id === id) ?? null;
+}
+
+function exitFocus() {
+  focus = null;
+}
+
+function enterFocus(stationId: string, obj: THREE.Object3D) {
+  const station = findStationById(stationId);
+  if (!station) return;
+
+  // Save current rail t so we can return
+  const returnT = currentT;
+
+  // Compute a camera position that centers the rectangle
+  const worldPos = new THREE.Vector3();
+  station.plane.getWorldPosition(worldPos);
+
+  const worldQuat = new THREE.Quaternion();
+  station.plane.getWorldQuaternion(worldQuat);
+
+  // Plane forward normal (local +Z)
+  const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat).normalize();
+
+  // Frame distance from plane based on plane height and camera field of view
+  const planeHeight = 2.05;
+  const fovRad = THREE.MathUtils.degToRad(camera.fov);
+  const padding = 1.22;
+  const dist = ((planeHeight * 0.5) / Math.tan(fovRad * 0.5)) * padding;
+
+  // Camera position: in front of plane, slightly above center
+  const camPos = worldPos.clone().addScaledVector(normal, dist);
+  camPos.y += 0.06;
+
+  const lookAt = worldPos.clone();
+  lookAt.y += 0.02;
+
+  focus = {
+    stationId,
+    object: obj,
+    camPos,
+    lookAt,
+    returnT,
+  };
+
+  // Start cycling images while focused (first swap happens soon)
+  station.nextSwapAt = clock.getElapsedTime() + 0.65;
+}
+
+window.addEventListener(
+  "pointerdown",
+  (ev) => {
+    updateMouseNdcFromEvent(ev);
+    const hit = pickObject();
+
+    // click empty space: exit focus
+    if (!hit?.object) {
+      if (focus) exitFocus();
+      return;
+    }
+
+    const stationId = hit.object.userData?.stationId as string | undefined;
+    if (!stationId) return;
+
+    enterFocus(stationId, hit.object);
+  },
+  { passive: true }
+);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") exitFocus();
+});
+
+// ============================================================
+// Image swap logic with per-project transition list
+// ============================================================
+function startSwap(station: StationRuntime) {
+  if (station.textures.length < 2) return;
+  if (station.swapping) return;
+
+  const nextImageIndex = (station.imageIndex + 1) % station.textures.length;
+
+  // Set shader textures:
+  // TexA = current image
+  // TexB = next image
+  station.plane.material.uniforms.uTexA.value = station.textures[station.imageIndex];
+  station.plane.material.uniforms.uTexB.value = station.textures[nextImageIndex];
+
+  // Pick next transition from the project transition list (loop)
+  const list = station.project.transitions.length > 0 ? station.project.transitions : ([0] as TransitionType[]);
+  const nextTransition = list[station.transitionIndex % list.length];
+
+  station.plane.material.uniforms.uTransition.value = nextTransition;
+
+  station.progress = 0;
+  station.plane.material.uniforms.uProgress.value = 0;
+
+  station.swapping = true;
+}
+
+function updateSwap(station: StationRuntime, dt: number) {
+  if (!station.swapping) return;
+
+  // Transition speed (you can tune)
+  station.progress = expMoveNumber(station.progress, 1.0, dt, 0.10);
+  station.plane.material.uniforms.uProgress.value = station.progress;
+
+  if (station.progress > 0.985) {
+    // Commit swap
+    station.imageIndex = (station.imageIndex + 1) % station.textures.length;
+    station.transitionIndex = (station.transitionIndex + 1) % Math.max(1, station.project.transitions.length);
+    station.swapping = false;
+    station.progress = 1.0;
+    station.plane.material.uniforms.uProgress.value = 1.0;
+  }
+}
+
+// ============================================================
+// Animate
+// ============================================================
 const clock = new THREE.Clock();
+
+const railPos = new THREE.Vector3();
+const railLook = new THREE.Vector3();
+const forwardLook = new THREE.Vector3();
+
+const focusCamPos = new THREE.Vector3();
+const focusLookAt = new THREE.Vector3();
 
 function animate() {
   const dt = clock.getDelta();
-  const t = clock.getElapsedTime();
+  const time = clock.getElapsedTime();
 
-  // smooth camera progression
-  currentT = THREE.MathUtils.lerp(currentT, targetT, 1 - Math.pow(0.0001, dt));
+  // Update shader time for all stations
+  for (const s of stations) {
+    s.plane.material.uniforms.uTime.value = time;
+  }
 
-  const camPos = curve.getPoint(currentT);
-  const camLookT = clamp01(currentT + 0.02);
-  const camLook = curve.getPoint(camLookT);
+  // Travel along path if not focused
+  if (!focus) {
+    currentT = THREE.MathUtils.lerp(currentT, targetT, 1 - Math.pow(0.0001, dt));
 
-  camera.position.set(camPos.x, 1.6, camPos.z);
-  camera.lookAt(camLook.x, 1.35, camLook.z);
+    railPos.copy(curve.getPoint(currentT));
+    railLook.copy(curve.getPoint(clamp01(currentT + 0.02)));
 
-  // particles drift (simple wind)
+    camera.position.set(railPos.x, 1.65, railPos.z);
+    forwardLook.set(railLook.x, 1.45, railLook.z);
+
+    const q = lookAtQuaternion(camera.position, forwardLook);
+    camera.quaternion.slerp(q, 1 - Math.pow(0.00005, dt));
+  } else {
+    // Focus mode: move camera into the station, centered on the plane
+    focusCamPos.copy(focus.camPos);
+    focusLookAt.copy(focus.lookAt);
+
+    expMoveVec3(camera.position, focusCamPos, dt, 0.10);
+    const q = lookAtQuaternion(camera.position, focusLookAt);
+    camera.quaternion.slerp(q, 1 - Math.pow(0.00005, dt));
+  }
+
+  // Particles drift
   const posAttr = particleGeo.getAttribute("position") as THREE.BufferAttribute;
   for (let i = 0; i < particleCount; i++) {
     const ix = i * 3;
-    posAttr.array[ix + 0] += Math.sin(t * 0.3 + i) * 0.0006 * particleSpd[i];
-    posAttr.array[ix + 1] += 0.0009 * particleSpd[i];
-
-    // recycle
-    if (posAttr.array[ix + 1] > 9.0) posAttr.array[ix + 1] = 0.2;
+    posAttr.array[ix + 0] += Math.sin(time * 0.25 + i) * 0.00065 * particleSpd[i];
+    posAttr.array[ix + 1] += 0.00055 * particleSpd[i];
+    if (posAttr.array[ix + 1] > 12.5) posAttr.array[ix + 1] = 0.2;
   }
   posAttr.needsUpdate = true;
 
-  // subtle orb pulse
-  (orb.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.4 + Math.sin(t * 0.9) * 0.15;
+  // Orb pulse + light flicker
+  (orb.material as THREE.MeshStandardMaterial).emissiveIntensity = 2.0 + Math.sin(time * 0.9) * 0.25;
+  pinkGlow.intensity = 2.4 + Math.sin(time * 2.2) * 0.25;
+  cyanGlow.intensity = 1.3 + Math.sin(time * 2.0 + 1.0) * 0.15;
+
+  // Stations: reveal, hover, focus highlight, and image cycling while focused
+  for (const s of stations) {
+    // Float motion
+    s.group.position.y = Math.sin(time * 0.8 + s.project.stationT * 10.0) * 0.06;
+
+    // Reveal based on distance to camera
+    const d = camera.position.distanceTo(s.anchor);
+    const reveal = smoothstep(18, 7, d);
+
+    // Fade title and frames with reveal
+    (s.title.material as THREE.SpriteMaterial).opacity = 0.08 + reveal * 0.92;
+
+    (s.frame1.material as THREE.MeshBasicMaterial).opacity = 0.02 + reveal * 0.18;
+    (s.frame2.material as THREE.MeshBasicMaterial).opacity = 0.015 + reveal * 0.14;
+
+    // Beacon intensity
+    const beaconMat = s.beacon.material as THREE.MeshStandardMaterial;
+    const isFocused = focus?.stationId === s.project.id ? 1 : 0;
+    beaconMat.emissiveIntensity = 6.0 + isFocused * 6.0;
+
+    // Plane scaling highlight
+    s.plane.scale.setScalar(1.0);
+    if (focus?.stationId === s.project.id) s.plane.scale.setScalar(1.05);
+
+    // Focused: cycle images automatically every few seconds
+    if (focus?.stationId === s.project.id) {
+      // If swap is not running, schedule next
+      if (!s.swapping && time >= s.nextSwapAt) {
+        startSwap(s);
+        // next swap in a few seconds (after this completes)
+        s.nextSwapAt = time + 3.2;
+      }
+    }
+
+    // Update swap animation (if active)
+    updateSwap(s, dt);
+  }
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
@@ -361,10 +1155,13 @@ function animate() {
 
 animate();
 
-// ---------- Resize ----------
+// --------------------------------------------
+// Resize
+// --------------------------------------------
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 });
