@@ -25,31 +25,42 @@ def solve():
     arr = [0] * (n + 2)
     for num in nums: arr[num] += 1
     cnt = 0
-    c = 0
-    print(arr)
-    for i in range(len(arr)):
-        if arr[i] == 0:
-            cnt += math.ceil(c / 3)
-            c = 0
+    i = 0
+    while i < len(arr):
+        if arr[i]:
+            i += 3
+            cnt += 1
         else:
-            c += 1
+            i += 1
 
     ans = len(arr) - arr.count(0)
+    
+    c = 0
+    s = 0
+    p = False
+    ans = 0
     for i in range(len(arr)):
-        if arr[i] > 1:
-            if i != 0 and arr[i - 1] == 0:
+        if arr[i] >= 1:
+            c += 1
+            s += arr[i]
+            ans += 1
+            if c == 1:
+                if arr[i - 1] == 0:
+                    p = True 
+        elif arr[i] == 0:
+            if s > c:
+                arr[i] = -1
                 ans += 1
-                arr[i - 1] = 1
-                arr[i] -= 1
-            if arr[i] > 1:
-                if i != len(arr) - 1 and arr[i + 1] == 0:
+
+                if p and s > c + 1:
                     ans += 1
-                    arr[i + 1] = 1
-                    arr[i] -= 1
-    return [cnt,ans]
-
-
+                    p = False
+            s = 0
+            c = 0
         
+
+                    
+
 
 
     return [cnt,ans]
