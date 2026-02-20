@@ -315,6 +315,109 @@ const orb = new THREE.Mesh(
 orb.position.set(0.6, 3.2, -112);
 scene.add(orb);
 
+
+// ============================================================
+// TRANSPARENT VIDEO GATE (placed ON the path, camera passes through it)
+// - Put /op_alpha.webm in /public
+// - VP9 + alpha (WebM) recommended
+// ============================================================
+
+const VIDEO_T = 0.42; // 0..1 along the curve (move this to reposition the gate)
+const VIDEO_CENTER_Y = 1.55; // around camera height (camera is ~1.65)
+const VIDEO_BASE_H = 3.0; // world height of the gate (big enough to pass through)
+
+// ---- Video element ----
+const video = document.createElement("video");
+video.src = "/op_alpha.webm";
+video.crossOrigin = "anonymous";
+video.loop = true;
+video.muted = true; // required for autoplay
+video.playsInline = true;
+video.preload = "auto";
+video.autoplay = true;
+
+// Try to play; if blocked, a user gesture will be needed
+async function tryPlay() {
+  try {
+    await video.play();
+  } catch {
+    // autoplay blocked
+  }
+}
+void tryPlay();
+
+// One click anywhere will start the video if autoplay is blocked
+window.addEventListener("pointerdown", () => void tryPlay(), { once: true });
+
+// ---- Video texture ----
+const videoTexture = new THREE.VideoTexture(video);
+videoTexture.minFilter = THREE.LinearFilter;
+videoTexture.magFilter = THREE.LinearFilter;
+videoTexture.generateMipmaps = false;
+videoTexture.colorSpace = THREE.SRGBColorSpace;
+const VIDEO_BRIGHTNESS = 1.6; // 1 = original, 2 = twice as bright, etc.
+const videoMat = new THREE.ShaderMaterial({
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  uniforms: {
+    uMap: { value: videoTexture },
+    uBrightness: { value: VIDEO_BRIGHTNESS },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D uMap;
+    uniform float uBrightness;
+
+    void main() {
+      vec4 c = texture2D(uMap, vUv);
+
+      // brighten RGB, keep alpha as-is
+      c.rgb *= uBrightness;
+
+      // optional: prevent blowing out too hard
+      c.rgb = min(c.rgb, vec3(1.0));
+
+      gl_FragColor = c;
+    }
+  `,
+});
+(videoMat as THREE.ShaderMaterial).toneMapped = false;
+
+const videoPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), videoMat);
+
+// Place it ON the road center at VIDEO_T
+const gatePos = curve.getPoint(VIDEO_T);
+videoPlane.position.set(gatePos.x, VIDEO_CENTER_Y, gatePos.z);
+
+// Orient it like a "gate" across the road so the camera drives through it
+// (plane normal aligned with path tangent in XZ)
+const gateTangent = curve.getTangent(VIDEO_T).normalize();
+gateTangent.y = 0;
+if (gateTangent.lengthSq() > 1e-6) gateTangent.normalize();
+
+videoPlane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), gateTangent);
+
+// Scale to match video aspect ratio once metadata is available
+video.addEventListener("loadedmetadata", () => {
+  const w = video.videoWidth || 1;
+  const h = video.videoHeight || 1;
+  const aspect = w / h;
+
+  // Keep height = VIDEO_BASE_H, width = aspect * height
+  videoPlane.scale.set(aspect * VIDEO_BASE_H, VIDEO_BASE_H, 1);
+});
+
+scene.add(videoPlane);
+
 // ============================================================
 // PROJECT STATIONS
 // ============================================================
