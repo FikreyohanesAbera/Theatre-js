@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en" id="top">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Portfolio — Unique Layout</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <!-- Scroll progress + section marker -->
+    <div class="scrollHUD" aria-hidden="true">
+      <div class="scrollLine"><div class="scrollFill" id="scrollFill"></div></div>
+      <div class="scrollLabel" id="scrollLabel">Intro</div>
+    </div>
+
+    <!-- Floating nav (minimal, unique placement) -->
+    <header class="floatNav">
+      <a class="logo" href="#top">
+        <span class="logoMark">YN</span>
+        <span class="logoText">Your Name</span>
+      </a>
+
+      <nav class="floatLinks" id="floatLinks">
+        <a href="#about" data-label="About">About</a>
+        <a href="#education" data-label="Education">Education</a>
+        <a href="#experience" data-label="Experience">Experience</a>
+        <a href="#projects" data-label="Projects">Projects</a>
+        <a href="#tools" data-label="Tools">Tools</a>
+        <a href="#contact" data-label="Contact">Contact</a>
+      </nav>
+
+      <div class="navActions">
+        <a class="btn btnGhost" href="#" id="resumeBtn">Resume ↗</a>
+        <button class="btn btnSolid magnetic" id="hireBtn" type="button">Let’s Work</button>
+      </div>
+    </header>
+
+    <!-- Background art layers -->
+    <div class="bgGrid" aria-hidden="true"></div>
+    <div class="bgGlow" aria-hidden="true"></div>
+    <div class="bgNoise" aria-hidden="true"></div>
+
+    <main>
+      <!-- HERO (unique offset composition) -->
+      <section class="hero section" data-section="Intro">
+        <div class="wrap heroWrap">
+          <div class="heroLeft">
+            <div class="pill">Software Engineer • Full Stack • Real-time</div>
+            <h1 class="heroTitle">
+              I build <span class="grad">systems</span> that feel <span class="stroke">fast</span> and
+              <span class="grad2">clear</span>.
+            </h1>
+
+            <p class="heroSub">
+              Reporting-heavy apps, real-time features, and clean architecture. I like projects where the result is
+              measurable.
+            </p>
+
+            <!-- Proof row (not generic chips) -->
+            <div class="proofRow">
+              <div class="proof">
+                <div class="proofTop">3.93/4</div>
+                <div class="proofBottom">CGPA</div>
+              </div>
+              <div class="proof">
+                <div class="proofTop">Expert</div>
+                <div class="proofBottom">Codeforces</div>
+              </div>
+              <div class="proof">
+                <div class="proofTop">1900+</div>
+                <div class="proofBottom">Problems</div>
+              </div>
+              <div class="now">
+                <span class="dot"></span>
+                <span><b>Now:</b> dashboards & exports</span>
+              </div>
+            </div>
+
+            <div class="ctaRow">
+              <a class="btn btnSolid magnetic" href="#projects">See Work</a>
+              <a class="btn btnGhost" href="#contact">Contact</a>
+              <a class="btn btnLink" href="#about">Quick story ↓</a>
+            </div>
+          </div>
+
+          <div class="heroRight">
+            <!-- Portrait panel with animated border -->
+            <div class="portraitPanel reveal">
+              <div class="portraitFrame">
+                <img
+                  src="https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=1000&q=80"
+                  alt="Profile photo"
+                />
+              </div>
+              <div class="portraitMeta">
+                <div class="name">Your Name</div>
+                <div class="meta">Addis Ababa • you@example.com</div>
+                <div class="miniLinks">
+                  <a href="#" target="_blank" rel="noreferrer">GitHub</a>
+                  <a href="#" target="_blank" rel="noreferrer">LinkedIn</a>
+                  <a href="#" target="_blank" rel="noreferrer">Blog</a>
+                </div>
+              </div>
+
+              <div class="orbit" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+
+            <!-- Side stack cards (asymmetry) -->
+            <div class="sideStack">
+              <div class="stackCard reveal">
+                <div class="stackTitle">Focus</div>
+                <div class="stackBody">Backend APIs • Reporting • Real-time</div>
+              </div>
+              <div class="stackCard reveal">
+                <div class="stackTitle">Edge</div>
+                <div class="stackBody">Strong problem-solving & clean architecture</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diagonal divider -->
+        <div class="diag" aria-hidden="true"></div>
+      </section>
+
+      <!-- ABOUT (split with offset column) -->
+      <section class="section" id="about" data-section="About">
+        <div class="wrap">
+          <div class="sectionHead">
+            <h2>About</h2>
+            <p>Short story + what I’m good at.</p>
+          </div>
+
+          <div class="aboutGrid">
+            <div class="aboutMain card reveal">
+              <h3>What I do</h3>
+              <p>
+                I enjoy turning messy requirements into simple flows. I build systems that remain understandable after
+                months of changes.
+              </p>
+
+              <div class="aboutList">
+                <div class="aboutItem">
+                  <div class="k">Design</div>
+                  <div class="v">Clear UX for real workflows</div>
+                </div>
+                <div class="aboutItem">
+                  <div class="k">Build</div>
+                  <div class="v">APIs, filtering, aggregation, exports</div>
+                </div>
+                <div class="aboutItem">
+                  <div class="k">Ship</div>
+                  <div class="v">Tests, safer changes, measurable outcomes</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="aboutAside">
+              <div class="quote card reveal">
+                <div class="quoteMark">“</div>
+                <div class="quoteText">
+                  I like work where users save time every day because the system is predictable and fast.
+                </div>
+                <div class="quoteBy">— me</div>
+              </div>
+
+              <div class="miniCard card reveal">
+                <div class="miniTop">Currently learning</div>
+                <div class="miniBody">NLP + better system design</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EDUCATION (timeline on a slanted rail) -->
+      <section class="section" id="education" data-section="Education">
+        <div class="wrap">
+          <div class="sectionHead">
+            <h2>Education</h2>
+            <p>Timeline that looks like a rail.</p>
+          </div>
+
+          <div class="rail reveal">
+            <div class="railLine" aria-hidden="true"></div>
+
+            <div class="railItem">
+              <div class="railDot"></div>
+              <div class="railCard card">
+                <div class="topRow">
+                  <h3>Addis Ababa University</h3>
+                  <span class="muted">2021 — Present</span>
+                </div>
+                <p class="muted">BSc Computer Science • CGPA 3.93/4</p>
+                <div class="tagRow">
+                  <span>Algorithms</span><span>Systems</span><span>Databases</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="railItem">
+              <div class="railDot"></div>
+              <div class="railCard card">
+                <div class="topRow">
+                  <h3>A2SV Program</h3>
+                  <span class="muted">Training</span>
+                </div>
+                <p class="muted">Competitive programming + team engineering</p>
+                <div class="tagRow">
+                  <span>Problem Solving</span><span>Team Projects</span><span>Mentorship</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EXPERIENCE (two-column "receipt" layout) -->
+      <section class="section" id="experience" data-section="Experience">
+        <div class="wrap">
+          <div class="sectionHead">
+            <h2>Experience</h2>
+            <p>Not a boring card: an “impact receipt”.</p>
+          </div>
+
+          <div class="receipt reveal">
+            <div class="receiptLeft">
+              <div class="receiptTitle">AAU — Full Stack Web Developer</div>
+              <div class="receiptSub muted">2024 — Present</div>
+
+              <div class="receiptLine"></div>
+
+              <div class="receiptBlock">
+                <div class="rbTitle">Delivered</div>
+                <ul>
+                  <li>Filtering + grouping reports</li>
+                  <li>Exports (CSV / Excel / PDF)</li>
+                  <li>Clear selection/booking flows</li>
+                </ul>
+              </div>
+
+              <div class="receiptBlock">
+                <div class="rbTitle">Impact</div>
+                <ul>
+                  <li>Less manual work</li>
+                  <li>Faster summaries</li>
+                  <li>More predictable UX</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="receiptRight">
+              <div class="stamp">SHIPPED</div>
+
+              <div class="techGrid">
+                <div class="techPill">Angular</div>
+                <div class="techPill">.NET</div>
+                <div class="techPill">PostgreSQL</div>
+                <div class="techPill">REST</div>
+              </div>
+
+              <div class="micro muted">
+                I like reporting work because it forces you to care about performance, correctness, and UX at the same
+                time.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PROJECTS (tilt + parallax cards) -->
+      <section class="section" id="projects" data-section="Projects">
+        <div class="wrap">
+          <div class="sectionHead">
+            <h2>Projects</h2>
+            <p>Hover the cards. Scroll feels alive.</p>
+          </div>
+
+          <div class="projectMasonry">
+            <article class="pCard tilt reveal" data-tilt>
+              <div class="pTop">
+                <h3>Efoyta Doctor Appointment</h3>
+                <span class="pMeta">Scheduling • Telegram Bot</span>
+              </div>
+              <p class="pText muted">
+                Interactive booking flow (dates/sessions) with constraints like weekly booking limits.
+              </p>
+              <div class="pTags">
+                <span>Python</span><span>Telegram</span><span>DB</span>
+              </div>
+              <div class="pLinks">
+                <a href="#" target="_blank" rel="noreferrer">GitHub ↗</a>
+                <a href="#" target="_blank" rel="noreferrer">Demo ↗</a>
+              </div>
+              <div class="pAura" aria-hidden="true"></div>
+            </article>
+
+            <article class="pCard tilt reveal big" data-tilt>
+              <div class="pTop">
+                <h3>Competitive Programming Lockout</h3>
+                <span class="pMeta">Real-time • Multiplayer</span>
+              </div>
+              <p class="pText muted">
+                Host + player roles, live updates, match dashboard. Designed for fast interactions.
+              </p>
+              <div class="pTags">
+                <span>Go</span><span>WebSockets</span><span>React</span>
+              </div>
+              <div class="pLinks">
+                <a href="#" target="_blank" rel="noreferrer">GitHub ↗</a>
+                <a href="#" target="_blank" rel="noreferrer">Demo ↗</a>
+              </div>
+              <div class="pAura" aria-hidden="true"></div>
+            </article>
+
+            <article class="pCard tilt reveal" data-tilt>
+              <div class="pTop">
+                <h3>Dime Remittance Backend</h3>
+                <span class="pMeta">Backend • APIs</span>
+              </div>
+              <p class="pText muted">
+                Transactions, rates, notifications, filtering/pagination, improved test coverage and safer deployments.
+              </p>
+              <div class="pTags">
+                <span>Go</span><span>Postgres</span><span>Docker</span>
+              </div>
+              <div class="pLinks">
+                <a href="#" target="_blank" rel="noreferrer">GitHub ↗</a>
+                <a href="#" target="_blank" rel="noreferrer">Docs ↗</a>
+              </div>
+              <div class="pAura" aria-hidden="true"></div>
+            </article>
+
+            <article class="pCard tilt reveal" data-tilt>
+              <div class="pTop">
+                <h3>Multimodal Opinion Mining</h3>
+                <span class="pMeta">ML • NLP</span>
+              </div>
+              <p class="pText muted">
+                Experiments combining text + image signals to classify sentiment and opinions.
+              </p>
+              <div class="pTags">
+                <span>Python</span><span>NLP</span><span>ML</span>
+              </div>
+              <div class="pLinks">
+                <a href="#" target="_blank" rel="noreferrer">GitHub ↗</a>
+                <a href="#" target="_blank" rel="noreferrer">Report ↗</a>
+              </div>
+              <div class="pAura" aria-hidden="true"></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- TOOLS (moving marquee + grouped wall) -->
+      <section class="section" id="tools" data-section="Tools">
+        <div class="wrap">
+          <div class="sectionHead">
+            <h2>Tools</h2>
+            <p>Wall + moving stack marquee.</p>
+          </div>
+
+          <div class="marquee reveal" aria-hidden="true">
+            <div class="marqueeTrack">
+              <span>Go</span><span>Python</span><span>React</span><span>Angular</span><span>PostgreSQL</span
+              ><span>Docker</span><span>GitHub Actions</span><span>WebSockets</span><span>Gin</span><span>.NET</span>
+              <span>Go</span><span>Python</span><span>React</span><span>Angular</span><span>PostgreSQL</span
+              ><span>Docker</span><span>GitHub Actions</span><span>WebSockets</span><span>Gin</span><span>.NET</span>
+            </div>
+          </div>
+
+          <div class="toolWall">
+            <div class="toolBox card reveal">
+              <div class="toolTitle">Backend</div>
+              <div class="toolDesc muted">APIs, architecture, validation.</div>
+              <div class="toolChips"><span>Go</span><span>Gin</span><span>ASP.NET</span><span>JWT</span></div>
+            </div>
+
+            <div class="toolBox card reveal">
+              <div class="toolTitle">Frontend</div>
+              <div class="toolDesc muted">Dashboards, components, forms.</div>
+              <div class="toolChips"><span>React</span><span>Next.js</span><span>Angular</span><span>Bootstrap</span></div>
+            </div>
+
+            <div class="toolBox card reveal">
+              <div class="toolTitle">Data</div>
+              <div class="toolDesc muted">Storage and querying.</div>
+              <div class="toolChips"><span>PostgreSQL</span><span>MongoDB</span><span>Redis</span></div>
+            </div>
+
+            <div class="toolBox card reveal">
+              <div class="toolTitle">DevOps</div>
+              <div class="toolDesc muted">CI, containers, deploy.</div>
+              <div class="toolChips"><span>Docker</span><span>GitHub Actions</span><span>GCP</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTACT -->
+      <section class="section" id="contact" data-section="Contact">
+        <div class="wrap">
+          <div class="sectionHead">
+            <h2>Contact</h2>
+            <p>Short and direct.</p>
+          </div>
+
+          <div class="contactGrid reveal">
+            <div class="contactCard card">
+              <div class="contactTitle">Let’s build something useful.</div>
+              <div class="contactRow">
+                <span class="muted">Email</span>
+                <a href="mailto:you@example.com">you@example.com</a>
+              </div>
+              <div class="contactRow">
+                <span class="muted">Links</span>
+                <div class="contactLinks">
+                  <a href="#" target="_blank" rel="noreferrer">GitHub ↗</a>
+                  <a href="#" target="_blank" rel="noreferrer">LinkedIn ↗</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="contactCard card">
+              <div class="contactTitle">Best fit for</div>
+              <ul class="muted">
+                <li>Backend / API work</li>
+                <li>Dashboards & reporting</li>
+                <li>Real-time features</li>
+              </ul>
+              <button class="btn btnSolid magnetic" type="button" id="emailBtn">Open Email</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="wrap footerInner">
+          <span class="muted">© <span id="year"></span> Your Name</span>
+          <span class="muted">Unique layout + animations • No frameworks</span>
+        </div>
+      </footer>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -328,7 +328,7 @@ const VIDEO_BASE_H = 3.0; // world height of the gate (big enough to pass throug
 
 // ---- Video element ----
 const video = document.createElement("video");
-video.src = "/op_alpha.webm";
+video.src = "static/op_alpha.mp4";
 video.crossOrigin = "anonymous";
 video.loop = true;
 video.muted = true; // required for autoplay
@@ -349,20 +349,35 @@ void tryPlay();
 // One click anywhere will start the video if autoplay is blocked
 window.addEventListener("pointerdown", () => void tryPlay(), { once: true });
 
-// ---- Video texture ----
+/// ---- Video texture ----
 const videoTexture = new THREE.VideoTexture(video);
 videoTexture.minFilter = THREE.LinearFilter;
 videoTexture.magFilter = THREE.LinearFilter;
 videoTexture.generateMipmaps = false;
 videoTexture.colorSpace = THREE.SRGBColorSpace;
-const VIDEO_BRIGHTNESS = 1.6; // 1 = original, 2 = twice as bright, etc.
+
+const VIDEO_BRIGHTNESS = 1.35; // keep lower; additive gets bright fast
+
 const videoMat = new THREE.ShaderMaterial({
   transparent: true,
   depthWrite: false,
+  depthTest: true,
   side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
   uniforms: {
     uMap: { value: videoTexture },
     uBrightness: { value: VIDEO_BRIGHTNESS },
+
+    // black removal + softness
+    uCutoff: { value: 0.055 },   // higher = remove more dark pixels
+    uSoftness: { value: 0.10 },  // higher = smoother alpha ramp
+
+    // soften rectangle border
+    uEdge: { value: 0.035 },     // border fade size (UV space)
+
+    // tiny animated distortion
+    uTime: { value: 0 },
+    uWarp: { value: 0.0022 },    // 0.001–0.004 (subtle!)
   },
   vertexShader: `
     varying vec2 vUv;
@@ -375,47 +390,51 @@ const videoMat = new THREE.ShaderMaterial({
     precision highp float;
     varying vec2 vUv;
     uniform sampler2D uMap;
+
     uniform float uBrightness;
+    uniform float uCutoff;
+    uniform float uSoftness;
+    uniform float uEdge;
+    uniform float uTime;
+    uniform float uWarp;
+
+    float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
     void main() {
-      vec4 c = texture2D(uMap, vUv);
+      // subtle UV warp so it doesn't feel like a perfect video plane
+      vec2 uv = vUv;
+      uv.x += sin((uv.y * 55.0) + uTime * 2.0) * uWarp;
+      uv.y += cos((uv.x * 45.0) + uTime * 1.6) * uWarp;
 
-      // brighten RGB, keep alpha as-is
+      vec4 c = texture2D(uMap, uv);
+
+      // boost RGB
       c.rgb *= uBrightness;
 
-      // optional: prevent blowing out too hard
-      c.rgb = min(c.rgb, vec3(1.0));
+      // convert brightness to alpha (black becomes transparent)
+      float a = luma(c.rgb);
+      a = smoothstep(uCutoff, uCutoff + uSoftness, a);
 
-      gl_FragColor = c;
+      // soften the hard rectangle border
+      float edge =
+        smoothstep(0.0, uEdge, uv.x) *
+        smoothstep(0.0, uEdge, uv.y) *
+        smoothstep(0.0, uEdge, 1.0 - uv.x) *
+        smoothstep(0.0, uEdge, 1.0 - uv.y);
+
+      a *= edge;
+
+      // final: additive glow look
+      gl_FragColor = vec4(c.rgb * a, a);
     }
   `,
 });
 (videoMat as THREE.ShaderMaterial).toneMapped = false;
 
 const videoPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), videoMat);
-
-// Place it ON the road center at VIDEO_T
-const gatePos = curve.getPoint(VIDEO_T);
-videoPlane.position.set(gatePos.x, VIDEO_CENTER_Y, gatePos.z);
-
-// Orient it like a "gate" across the road so the camera drives through it
-// (plane normal aligned with path tangent in XZ)
-const gateTangent = curve.getTangent(VIDEO_T).normalize();
-gateTangent.y = 0;
-if (gateTangent.lengthSq() > 1e-6) gateTangent.normalize();
-
-videoPlane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), gateTangent);
-
-// Scale to match video aspect ratio once metadata is available
-video.addEventListener("loadedmetadata", () => {
-  const w = video.videoWidth || 1;
-  const h = video.videoHeight || 1;
-  const aspect = w / h;
-
-  // Keep height = VIDEO_BASE_H, width = aspect * height
-  videoPlane.scale.set(aspect * VIDEO_BASE_H, VIDEO_BASE_H, 1);
-});
-
+videoPlane.renderOrder = 10; // draw after most opaque stuff (helps)
+videoPlane.position.set(ground.position.x, VIDEO_BASE_H * 0.5 + 0.05, ground.position.z);
+videoPlane.scale.set(2,2,2);
 scene.add(videoPlane);
 
 // ============================================================
@@ -951,7 +970,7 @@ window.addEventListener(
   "wheel",
   (e) => {
     if (focus) return;
-    targetT = clamp01(targetT + Math.sign(e.deltaY) * 0.02);
+    targetT = clamp01(targetT + Math.sign(e.deltaY) * 0.002);
   },
   { passive: true }
 );
@@ -965,7 +984,7 @@ window.addEventListener(
     const y = e.touches[0]?.clientY ?? touchY;
     const dy = y - touchY;
     touchY = y;
-    targetT = clamp01(targetT + Math.sign(dy) * 0.02);
+    targetT = clamp01(targetT + Math.sign(dy) * 0.002);
   },
   { passive: true }
 );
@@ -1123,6 +1142,8 @@ function animate() {
   const dt = clock.getDelta();
   const time = clock.getElapsedTime();
 
+  (videoMat as THREE.ShaderMaterial).uniforms.uTime.value = clock.getElapsedTime();
+
   // Update shader time for all stations
   for (const s of stations) {
     s.plane.material.uniforms.uTime.value = time;
@@ -1142,7 +1163,7 @@ function animate() {
     camera.quaternion.slerp(q, 1 - Math.pow(0.00005, dt));
   } else {
     // Focus mode
-    expMoveVec3(camera.position, focus.camPos, dt, 0.10);
+    expMoveVec3(camera.position, focus.camPos, dt, 0.1);
     const q = lookAtQuaternion(camera.position, focus.lookAt);
     camera.quaternion.slerp(q, 1 - Math.pow(0.00005, dt));
   }

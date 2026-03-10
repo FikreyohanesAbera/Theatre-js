@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Window Reveal - Guaranteed Visible</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; }
+      #hud {
+        position: fixed; left: 12px; top: 12px; z-index: 10;
+        color: #cfe8ff; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        font-size: 13px; opacity: 0.9; line-height: 1.45;
+        background: rgba(0,0,0,0.35);
+        border: 1px solid rgba(140, 190, 255, 0.18);
+        border-radius: 10px;
+        padding: 10px 12px;
+        max-width: 560px;
+        user-select: none;
+      }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div><b>Window Reveal (Guaranteed Visible)</b></div>
+      <div>Controls: Space pause | A/D move slab | W/S move slab Z | Q/E window size | F wireframe</div>
+      <div id="readout" style="margin-top:6px;"></div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+      // ---------------- Renderer ----------------
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      document.body.appendChild(renderer.domElement);
+
+      // ---------------- Scene / Camera ----------------
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x05060a);
+
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.05, 200);
+      camera.position.set(0, 0.2, 1.8);
+      camera.lookAt(0, 0.2, -10);
+
+      const clock = new THREE.Clock();
+
+      // ---------------- Lights ----------------
+      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      const dir = new THREE.DirectionalLight(0xbfd8ff, 1.15);
+      dir.position.set(2, 3, 2);
+      scene.add(dir);
+
+      // ---------------- Helpers (so you NEVER see "nothing") ----------------
+      const grid = new THREE.GridHelper(30, 30, 0x2a3550, 0x101628);
+      grid.position.set(0, -2.0, -10);
+      scene.add(grid);
+
+      const axes = new THREE.AxesHelper(2.5);
+      axes.position.set(-6, -1.4, -10);
+      scene.add(axes);
+
+      // ---------------- Project Stage (BIG and obvious) ----------------
+      // Always exists in front of camera.
+      const PROJECT_Z = -12.0;
+
+      const stage = new THREE.Group();
+      stage.position.set(0, 0, 0);
+      scene.add(stage);
+
+      const projects = [
+        { color: 0x4fd1ff, name: "PROJECT 1" },
+        { color: 0xff6aa8, name: "PROJECT 2" },
+        { color: 0xa6ff7a, name: "PROJECT 3" },
+        { color: 0xffd36a, name: "PROJECT 4" },
+        { color: 0xb08cff, name: "PROJECT 5" },
+      ];
+
+      const projectGroups = [];
+      for (let i = 0; i < projects.length; i++) {
+        const g = new THREE.Group();
+        g.position.set(0, 0.3, PROJECT_Z);
+
+        // big card
+        const card = new THREE.Mesh(
+          new THREE.PlaneGeometry(8.2, 4.6),
+          new THREE.MeshStandardMaterial({
+            color: projects[i].color,
+            roughness: 0.35,
+            metalness: 0.05,
+            emissive: new THREE.Color(projects[i].color).multiplyScalar(0.12),
+            emissiveIntensity: 1.0,
+            side: THREE.DoubleSide
+          })
+        );
+        card.position.set(0, 0, 0);
+        g.add(card);
+
+        // border frame behind card
+        const frame = new THREE.Mesh(
+          new THREE.PlaneGeometry(8.6, 5.0),
+          new THREE.MeshBasicMaterial({ color: 0x0b1022, transparent: true, opacity: 0.65, side: THREE.DoubleSide })
+        );
+        frame.position.set(0, 0, -0.05);
+        g.add(frame);
+
+        // a visible marker cube so depth is clear
+        const cube = new THREE.Mesh(
+          new THREE.BoxGeometry(0.9, 0.9, 0.9),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x223366, emissiveIntensity: 0.7 })
+        );
+        cube.position.set(-3.2, -1.2, -1.5);
+        g.add(cube);
+
+        g.visible = false;
+        stage.add(g);
+        projectGroups.push(g);
+      }
+
+      let activeProject = 0;
+      projectGroups[activeProject].visible = true;
+
+      function setActiveProject(i) {
+        projectGroups[activeProject].visible = false;
+        activeProject = i;
+        projectGroups[activeProject].visible = true;
+      }
+
+      // ---------------- Slab with holes (NO blocker box) ----------------
+      const planePass = new THREE.Group();
+      scene.add(planePass);
+
+      let windowW = 3.2;
+      let windowH = 1.8;
+      const WINDOW_COUNT = projects.length;
+
+      function makeSlabWithWindows({ slabW, slabH, windows, spacing, windowW, windowH, windowY }) {
+        const shape = new THREE.Shape();
+        shape.moveTo(-slabW/2, -slabH/2);
+        shape.lineTo( slabW/2, -slabH/2);
+        shape.lineTo( slabW/2,  slabH/2);
+        shape.lineTo(-slabW/2,  slabH/2);
+        shape.lineTo(-slabW/2, -slabH/2);
+
+        const holeCenters = [];
+        const startX = -((windows - 1) * spacing) / 2;
+
+        for (let i = 0; i < windows; i++) {
+          const cx = startX + i * spacing;
+          holeCenters.push(cx);
+
+          const hole = new THREE.Path();
+          const x0 = cx - windowW/2;
+          const x1 = cx + windowW/2;
+          const y0 = windowY - windowH/2;
+          const y1 = windowY + windowH/2;
+
+          hole.moveTo(x0, y0);
+          hole.lineTo(x1, y0);
+          hole.lineTo(x1, y1);
+          hole.lineTo(x0, y1);
+          hole.lineTo(x0, y0);
+          shape.holes.push(hole);
+        }
+
+        const geo = new THREE.ShapeGeometry(shape);
+
+        const bodyMat = new THREE.MeshStandardMaterial({
+          color: 0x16203a,
+          roughness: 0.75,
+          metalness: 0.04,
+          side: THREE.DoubleSide
+        });
+
+        const front = new THREE.Mesh(geo, bodyMat);
+        front.position.z = 0;
+
+        // bright outline overlay so you SEE the holes
+        const outline = new THREE.Mesh(
+          geo,
+          new THREE.MeshBasicMaterial({ color: 0x5ad0ff, transparent: true, opacity: 0.28, side: THREE.DoubleSide })
+        );
+        outline.position.z = 0.002;
+
+        const grp = new THREE.Group();
+        grp.add(front);
+        grp.add(outline);
+
+        return { group: grp, holeCenters };
+      }
+
+      let slab = null;
+      function rebuildSlab() {
+        if (slab) planePass.remove(slab.group);
+        slab = makeSlabWithWindows({
+          slabW: 22,
+          slabH: 6.2,
+          windows: WINDOW_COUNT,
+          spacing: 3.6,
+          windowW,
+          windowH,
+          windowY: 0.3
+        });
+        planePass.add(slab.group);
+      }
+
+      rebuildSlab();
+
+      // Put slab between camera and projects
+      planePass.position.set(-12, 0.35, -6.5);
+
+      // ---------------- Autoplay drift/hold/snap ----------------
+      const motion = {
+        idx: 0,
+        state: "DRIFT",
+        t: 0,
+        holdTime: 1.1,
+        driftSpeed: 0.85,
+        snapSpeed: 6.2,
+        halfOffsetX: 1.2,
+        paused: false
+      };
+
+      function desiredPlaneXForWindow(i, targetHoleWorldX) {
+        const holeLocalX = slab.holeCenters[i];
+        return targetHoleWorldX - holeLocalX;
+      }
+
+      function updateMotion(dt) {
+        if (motion.paused) return;
+        const i = motion.idx;
+
+        if (motion.state === "DRIFT") {
+          const targetX = desiredPlaneXForWindow(i, -motion.halfOffsetX);
+          const dx = targetX - planePass.position.x;
+          const step = Math.sign(dx) * motion.driftSpeed * dt;
+          if (Math.abs(step) >= Math.abs(dx)) {
+            planePass.position.x = targetX;
+            motion.state = "HOLD";
+            motion.t = 0;
+          } else {
+            planePass.position.x += step;
+          }
+        } else if (motion.state === "HOLD") {
+          motion.t += dt;
+          if (motion.t >= motion.holdTime) motion.state = "SNAP";
+        } else if (motion.state === "SNAP") {
+          const targetX = desiredPlaneXForWindow(i, 0.0);
+          const dx = targetX - planePass.position.x;
+          const step = Math.sign(dx) * motion.snapSpeed * dt;
+
+          if (Math.abs(step) >= Math.abs(dx)) {
+            planePass.position.x = targetX;
+
+            const next = (motion.idx + 1) % WINDOW_COUNT;
+            setActiveProject(next);
+            motion.idx = next;
+
+            motion.state = "DRIFT";
+            motion.t = 0;
+          } else {
+            planePass.position.x += step;
+          }
+        }
+      }
+
+      // ---------------- Debug controls ----------------
+      let wireframe = false;
+
+      function setWireframeAll(flag) {
+        scene.traverse((o) => {
+          if (o.isMesh && o.material) {
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            for (const m of mats) {
+              if ("wireframe" in m) m.wireframe = flag;
+            }
+          }
+        });
+      }
+
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") motion.paused = !motion.paused;
+        if (e.key === "f" || e.key === "F") { wireframe = !wireframe; setWireframeAll(wireframe); }
+
+        const stepX = 0.35;
+        const stepZ = 0.35;
+
+        if (e.key === "a" || e.key === "A") planePass.position.x -= stepX;
+        if (e.key === "d" || e.key === "D") planePass.position.x += stepX;
+        if (e.key === "w" || e.key === "W") planePass.position.z += stepZ; // closer to camera (less negative)
+        if (e.key === "s" || e.key === "S") planePass.position.z -= stepZ;
+
+        if (e.key === "q" || e.key === "Q") {
+          windowW = Math.max(1.2, windowW - 0.2);
+          windowH = Math.max(0.8, windowH - 0.12);
+          rebuildSlab();
+        }
+        if (e.key === "e" || e.key === "E") {
+          windowW = Math.min(6.0, windowW + 0.2);
+          windowH = Math.min(4.0, windowH + 0.12);
+          rebuildSlab();
+        }
+      });
+
+      // ---------------- HUD readout ----------------
+      const readout = document.getElementById("readout");
+      function updateReadout() {
+        readout.textContent =
+          `plane x=${planePass.position.x.toFixed(2)} z=${planePass.position.z.toFixed(2)} | ` +
+          `active=${activeProject+1}/${projects.length} | state=${motion.state} | ` +
+          `win=${windowW.toFixed(2)}x${windowH.toFixed(2)}`;
+      }
+
+      // ---------------- Render loop ----------------
+      function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.033);
+
+        updateMotion(dt);
+        updateReadout();
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // ---------------- Resize ----------------
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      });
+    </script>
+  </body>
+</html>
