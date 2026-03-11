@@ -35,7 +35,7 @@ scene.add(dirLight);
 const loader = new GLTFLoader();
 
 loader.load(
-  "/static/chaaa.glb",
+  "/static/cha.glb",
   (gltf) => {
     const model = gltf.scene;
 
