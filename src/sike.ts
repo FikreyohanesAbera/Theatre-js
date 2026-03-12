@@ -4,7 +4,7 @@ import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070a16);
-scene.fog = new THREE.Fog(0x0b1020, 3, 20);
+scene.fog = new THREE.Fog(0x0b1020, 10, 30);
 
 const camera = new THREE.PerspectiveCamera(
   55,
@@ -114,14 +114,17 @@ scene.add(grid);
 // PATH
 // =========================
 const path = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(0, 2.0, 10),
+  new THREE.Vector3(2, 1.1, -2),
   new THREE.Vector3(4, 2.2, -8),
-  new THREE.Vector3(-6, 2.1, -28),
-  new THREE.Vector3(8, 2.3, -50),
-  new THREE.Vector3(-7, 2.0, -74),
-  new THREE.Vector3(6, 2.2, -98),
-  new THREE.Vector3(0, 2.0, -125),
+  new THREE.Vector3(-6, -5.1, -28),
+  new THREE.Vector3(-12, 4.1, -78),
+  new THREE.Vector3(8, 4.3, -150),
+  new THREE.Vector3(-1, -2.1, -286),
+  new THREE.Vector3(0, 12.0, -325),
 ]);
+
+path.curveType = "catmullrom";
+path.tension = 0.5;
 
 const pathPoints = path.getPoints(300);
 const pathLine = new THREE.Line(
@@ -243,7 +246,7 @@ loader.load(
     bikeVisual.position.set(BIKE_OFFSET_X, BIKE_OFFSET_Y, BIKE_OFFSET_Z);
 
     // FPP position
-    cameraRig.position.set(0, 2.9, -1.5);
+    cameraRig.position.set(0, 3.1, -1.3);
     cameraRig.rotation.set(0, Math.PI, 0);
 
     console.log("Bike size:", size);
@@ -278,7 +281,7 @@ const schools: School[] = [
     title: "School One",
     details: ["First discovery", "Early foundation", "Appears from the fog"],
     anchorT: 0.22,
-    side: -10,
+    side: -20,
     object: null,
   },
   {
@@ -286,7 +289,7 @@ const schools: School[] = [
     title: "School Two",
     details: ["Second discovery", "STEM growth phase", "Further along the path"],
     anchorT: 0.55,
-    side: 10,
+    side: 20,
     object: null,
   },
   {
@@ -294,13 +297,13 @@ const schools: School[] = [
     title: "School Three",
     details: ["Final discovery", "Advanced stage", "Deep in the journey"],
     anchorT: 0.86,
-    side: -11,
+    side: -21,
     object: null,
   },
 ];
 
 const SCHOOL_URL = "/static/school.glb";
-const SCHOOL_SCALE = 2.2;
+const SCHOOL_SCALE = 1.2;
 const SCHOOL_ROT_Y = 0;
 
 loader.load(
@@ -336,7 +339,7 @@ loader.load(
       schoolInstance.position.copy(p.clone().add(sideVec.multiplyScalar(school.side)));
       schoolInstance.position.y = 7;
 
-      setModelOpacity(schoolInstance, 0);
+      // setModelOpacity(schoolInstance, 0);
       scene.add(schoolInstance);
 
       school.object = schoolInstance;
@@ -388,7 +391,7 @@ function animate() {
 
     const reveal = 1 - smoothstep(10, 28, dist);
     const opacity = THREE.MathUtils.clamp(reveal, 0, 1);
-    setModelOpacity(school.object, opacity);
+    // setModelOpacity(school.object, opacity);
 
     if (dist < nearestDist) {
       nearestDist = dist;
@@ -413,22 +416,22 @@ function animate() {
     nearestSchool.object.getWorldPosition(schoolLook);
     schoolLook.y += 2.5;
 
-    const a = Math.max(0, nearestSchool.anchorT - 0.08);
-    const b = Math.max(0, nearestSchool.anchorT - 0.03);
-    const c = Math.min(1, nearestSchool.anchorT + 0.03);
-    const d = Math.min(1, nearestSchool.anchorT + 0.10);
+    const a = Math.max(0, nearestSchool.anchorT - 0.1);
+    const b = Math.max(0, nearestSchool.anchorT - 0.05);
+    const c = Math.min(1, nearestSchool.anchorT - 0.02);
+    const d = Math.min(1, nearestSchool.anchorT + 0.001);
 
     focusWeight = pulse(a, b, c, d, scrollT);
   }
 
-  finalLook.lerpVectors(forwardLook, schoolLook, focusWeight);
+  finalLook.lerpVectors(forwardLook.add(new THREE.Vector3(0,1.2,0)), schoolLook.add(new THREE.Vector3(0,-2,0)), focusWeight);
 
   lookMatrix.lookAt(camWorldPos, finalLook, up);
   targetQuat.setFromRotationMatrix(lookMatrix);
   camera.quaternion.slerp(targetQuat, 0.06);
 
   // info panel can still switch normally
-  if (nearestSchool && focusWeight > 0.35 && activeSchoolId !== nearestSchool.id) {
+  if (nearestSchool && focusWeight > 0.15 && activeSchoolId !== nearestSchool.id) {
     activeSchoolId = nearestSchool.id;
     setInfo(nearestSchool.title, nearestSchool.details);
   } else if (focusWeight < 0.1 && activeSchoolId !== null) {
