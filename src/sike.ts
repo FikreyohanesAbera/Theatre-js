@@ -11,7 +11,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   300
 );
-camera.position.set(0, 3, 12);
+// camera.position.set(0, 6, 18);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -23,7 +23,9 @@ document.body.style.overflowY = "scroll";
 document.body.style.height = "500vh";
 document.body.appendChild(renderer.domElement);
 
-// ---------- UI ----------
+// =========================
+// UI
+// =========================
 const infoPanel = document.createElement("div");
 infoPanel.style.position = "fixed";
 infoPanel.style.right = "24px";
@@ -55,13 +57,16 @@ function setInfo(title: string, lines: string[]) {
   `;
 }
 
-// ---------- LIGHTING ----------
+// =========================
+// LIGHTING
+// =========================
 const hemiLight = new THREE.HemisphereLight(0x7aa2ff, 0x05070f, 0.85);
 scene.add(hemiLight);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(8, 14, 10);
 dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(2048, 2048);
 scene.add(dirLight);
 
 const cyanLight = new THREE.PointLight(0x00eaff, 12, 30, 2);
@@ -76,7 +81,9 @@ const blueBackLight = new THREE.PointLight(0x3b5bff, 10, 40, 2);
 blueBackLight.position.set(0, 6, -40);
 scene.add(blueBackLight);
 
-// ---------- FLOOR ----------
+// =========================
+// FLOOR
+// =========================
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(250, 250),
   new THREE.MeshStandardMaterial({
@@ -91,14 +98,22 @@ floor.position.y = 0;
 floor.receiveShadow = true;
 scene.add(floor);
 
-// subtle guide lines
 const grid = new THREE.GridHelper(250, 80, 0x203a70, 0x14203e);
 grid.position.y = 0.02;
-(grid.material as THREE.Material).transparent = true;
-(grid.material as THREE.Material).opacity = 0.25;
+if (Array.isArray(grid.material)) {
+  grid.material.forEach((m) => {
+    m.transparent = true;
+    m.opacity = 0.25;
+  });
+} else {
+  grid.material.transparent = true;
+  grid.material.opacity = 0.25;
+}
 scene.add(grid);
 
-// ---------- PATH ----------
+// =========================
+// PATH
+// =========================
 const path = new THREE.CatmullRomCurve3([
   new THREE.Vector3(0, 2.0, 10),
   new THREE.Vector3(4, 2.2, -8),
@@ -120,7 +135,9 @@ const pathLine = new THREE.Line(
 );
 scene.add(pathLine);
 
-// ---------- HELPERS ----------
+// =========================
+// HELPERS
+// =========================
 function prepareModel(root: THREE.Object3D) {
   root.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -128,10 +145,13 @@ function prepareModel(root: THREE.Object3D) {
       child.receiveShadow = true;
 
       if (Array.isArray(child.material)) {
-        child.material.forEach((m) => {
-          m.fog = true;
+        child.material = child.material.map((m) => {
+          const cloned = m.clone();
+          cloned.fog = true;
+          return cloned;
         });
-      } else {
+      } else if (child.material) {
+        child.material = child.material.clone();
         child.material.fog = true;
       }
     }
@@ -145,10 +165,12 @@ function setModelOpacity(root: THREE.Object3D, opacity: number) {
         child.material.forEach((m) => {
           m.transparent = true;
           m.opacity = opacity;
+          m.depthWrite = opacity > 0.95;
         });
       } else {
         child.material.transparent = true;
         child.material.opacity = opacity;
+        child.material.depthWrite = opacity > 0.95;
       }
     }
   });
@@ -159,45 +181,93 @@ function smoothstep(edge0: number, edge1: number, x: number) {
   return t * t * (3 - 2 * t);
 }
 
+function getScrollProgress() {
+  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+  if (maxScroll <= 0) return 0;
+  return THREE.MathUtils.clamp(window.scrollY / maxScroll, 0, 1);
+}
+
+// =========================
+// HOVER BIKE
+// =========================
+const loader = new GLTFLoader();
+
 const bikeRoot = new THREE.Group();
 scene.add(bikeRoot);
 
+// correction wrapper for your actual bike model
 const bikeVisual = new THREE.Group();
 bikeRoot.add(bikeVisual);
 
-let bikeModel: THREE.Object3D | null = null;
-const loader = new GLTFLoader();
-loader.load(
-  "/static/scc.glb",
-  (gltf) => {
-    bikeModel = gltf.scene;
-    prepareModel(bikeModel);
 
-    // center the raw model first
-    const box = new THREE.Box3().setFromObject(bikeModel);
+const cameraRig = new THREE.Object3D();
+bikeRoot.add(cameraRig);
+
+// tweak these for your cockpit
+const FPP_POS = new THREE.Vector3(0, 2.2, 0.3);
+const LOOK_AHEAD_DISTANCE = 12;
+const LOOK_UP_OFFSET = 1.4;
+// tune these if needed
+const BIKE_SCALE = 0.03;
+const BIKE_ROT_X = 0;
+const BIKE_ROT_Y = -Math.PI / 2;
+const BIKE_ROT_Z = 0;
+const BIKE_OFFSET_X = 0;
+const BIKE_OFFSET_Y = 0;
+const BIKE_OFFSET_Z = 0;
+
+let bikeLoaded = false;
+
+loader.load(
+  "/static/cha.glb",
+  (gltf) => {
+    const rawBike = gltf.scene;
+    prepareModel(rawBike);
+
+    rawBike.position.set(0, 0, 0);
+    rawBike.rotation.set(0, 0, 0);
+    rawBike.scale.set(1, 1, 1);
+
+    const box = new THREE.Box3().setFromObject(rawBike);
     const center = new THREE.Vector3();
     const size = new THREE.Vector3();
     box.getCenter(center);
     box.getSize(size);
 
-    bikeModel.position.sub(center);
-    bikeModel.position.y += size.y / 2;
+    rawBike.position.sub(center);
+    rawBike.position.y += size.y / 2;
 
-    // put model inside correction wrapper
-    bikeVisual.add(bikeModel);
+    bikeVisual.add(rawBike);
 
-    // ---- correction values: tweak these for your model ----
-    bikeVisual.scale.setScalar(0.6);     // try 0.3, 0.5, 0.8, 1.2
-    bikeVisual.rotation.y = Math.PI;     // flip forward direction if backwards
-    bikeVisual.rotation.x = 0;           // use if model points up/down weirdly
-    bikeVisual.rotation.z = 0;           // use if model is tilted sideways
-    bikeVisual.position.set(0, 0, 0);    // local offset inside root
+    bikeVisual.scale.setScalar(BIKE_SCALE);
+    bikeVisual.rotation.set(BIKE_ROT_X, BIKE_ROT_Y, BIKE_ROT_Z);
+    bikeVisual.position.set(BIKE_OFFSET_X, BIKE_OFFSET_Y, BIKE_OFFSET_Z);
+
+    // first person camera position inside cockpit
+    cameraRig.position.set(0, 2.9, -1.5);
+    cameraRig.rotation.y = Math.PI;
+
+    bikeLoaded = true;
+
+    console.log("Bike size:", size);
   },
   undefined,
   (err) => console.error("Error loading bike:", err)
 );
 
-// ---------- PLACEHOLDER SCHOOLS ----------
+cameraRig.position.copy(FPP_POS);
+// bike glow lights
+const bikeGlow1 = new THREE.PointLight(0x00eaff, 4, 12, 2);
+bikeGlow1.position.set(0, 1.8, 2.5);
+bikeRoot.add(bikeGlow1);
+
+const bikeGlow2 = new THREE.PointLight(0xff2fd1, 3, 10, 2);
+bikeGlow2.position.set(0, 1.6, -2.0);
+bikeRoot.add(bikeGlow2);
+
+// =========================
+// PLACEHOLDER SCHOOLS
+// =========================
 type School = {
   id: string;
   title: string;
@@ -211,36 +281,40 @@ type School = {
 function createSchool(color: number) {
   const g = new THREE.Group();
 
-  const base = new THREE.Mesh(
-    new THREE.BoxGeometry(5, 2, 5),
-    new THREE.MeshStandardMaterial({
-      color: 0x1a2238,
-      roughness: 0.7,
-      metalness: 0.2,
-      emissive: new THREE.Color(color),
-      emissiveIntensity: 0.08,
-      fog: true,
-    })
-  );
+  const baseMat = new THREE.MeshStandardMaterial({
+    color: 0x1a2238,
+    roughness: 0.7,
+    metalness: 0.2,
+    emissive: new THREE.Color(color),
+    emissiveIntensity: 0.08,
+    fog: true,
+  });
+
+  const towerMat = new THREE.MeshStandardMaterial({
+    color: 0x26314f,
+    roughness: 0.6,
+    metalness: 0.2,
+    emissive: new THREE.Color(color),
+    emissiveIntensity: 0.18,
+    fog: true,
+  });
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(5, 2, 5), baseMat);
   base.position.y = 1;
+  base.castShadow = true;
+  base.receiveShadow = true;
   g.add(base);
 
-  const tower1 = new THREE.Mesh(
-    new THREE.BoxGeometry(1.4, 4, 1.4),
-    new THREE.MeshStandardMaterial({
-      color: 0x26314f,
-      roughness: 0.6,
-      metalness: 0.2,
-      emissive: new THREE.Color(color),
-      emissiveIntensity: 0.18,
-      fog: true,
-    })
-  );
+  const tower1 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 4, 1.4), towerMat);
   tower1.position.set(-1.4, 3, 0.8);
+  tower1.castShadow = true;
+  tower1.receiveShadow = true;
   g.add(tower1);
 
-  const tower2 = tower1.clone();
+  const tower2 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.2, 1.4), towerMat);
   tower2.position.set(1.3, 2.6, -0.9);
+  tower2.castShadow = true;
+  tower2.receiveShadow = true;
   g.add(tower2);
 
   const beacon = new THREE.PointLight(color, 8, 18, 2);
@@ -292,17 +366,14 @@ for (const school of schools) {
   scene.add(school.object);
 }
 
-// ---------- SCROLL ----------
-function getScrollProgress() {
-  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-  if (maxScroll <= 0) return 0;
-  return THREE.MathUtils.clamp(window.scrollY / maxScroll, 0, 1);
-}
-
+// =========================
+// ANIMATION
+// =========================
 let scrollT = 0;
 let activeSchoolId: string | null = null;
+const tempForward = new THREE.Vector3();
+const tempLook = new THREE.Vector3();
 
-// ---------- ANIMATE ----------
 function animate() {
   requestAnimationFrame(animate);
 
@@ -313,20 +384,17 @@ function animate() {
   const aheadPos = path.getPointAt(Math.min(scrollT + 0.01, 1));
 
   bikeRoot.position.copy(bikePos);
-  bikeRoot.position.y += Math.sin(performance.now() * 0.003) * 0.08;
+  bikeRoot.position.y += Math.sin(performance.now() * 0.003) * 0.02;
   bikeRoot.lookAt(aheadPos);
 
-  // camera behind and above the bike
-  const backward = new THREE.Vector3();
-  bikeRoot.getWorldDirection(backward);
+  const camWorldPos = new THREE.Vector3();
+  const camWorldQuat = new THREE.Quaternion();
 
-  const camPos = bikePos
-    .clone()
-    .add(backward.clone().multiplyScalar(-7.5))
-    .add(new THREE.Vector3(0, 3.2, 0));
+  cameraRig.getWorldPosition(camWorldPos);
+  cameraRig.getWorldQuaternion(camWorldQuat);
 
-  camera.position.lerp(camPos, 0.08);
-  camera.lookAt(aheadPos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+  camera.position.copy(camWorldPos);
+  camera.quaternion.copy(camWorldQuat);
 
   let nearestSchool: School | null = null;
   let nearestDist = Infinity;
