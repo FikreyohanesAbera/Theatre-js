@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070a16);
@@ -157,21 +158,24 @@ function prepareModel(root: THREE.Object3D) {
     }
   });
 }
-
 function setModelOpacity(root: THREE.Object3D, opacity: number) {
   root.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      if (Array.isArray(child.material)) {
-        child.material.forEach((m) => {
-          m.transparent = true;
-          m.opacity = opacity;
-          m.depthWrite = opacity > 0.95;
-        });
-      } else {
-        child.material.transparent = true;
-        child.material.opacity = opacity;
-        child.material.depthWrite = opacity > 0.95;
-      }
+    if (!(child instanceof THREE.Mesh)) return;
+
+    const fullOpaque = opacity >= 0.999;
+
+    if (Array.isArray(child.material)) {
+      child.material.forEach((m) => {
+        m.opacity = opacity;
+        m.transparent = !fullOpaque;
+        m.depthWrite = fullOpaque;
+        m.needsUpdate = true;
+      });
+    } else {
+      child.material.opacity = opacity;
+      child.material.transparent = !fullOpaque;
+      child.material.depthWrite = fullOpaque;
+      child.material.needsUpdate = true;
     }
   });
 }
@@ -274,55 +278,9 @@ type School = {
   details: string[];
   anchorT: number;
   side: number;
-  object: THREE.Group;
+  object: THREE.Group | null;
   discovered: boolean;
 };
-
-function createSchool(color: number) {
-  const g = new THREE.Group();
-
-  const baseMat = new THREE.MeshStandardMaterial({
-    color: 0x1a2238,
-    roughness: 0.7,
-    metalness: 0.2,
-    emissive: new THREE.Color(color),
-    emissiveIntensity: 0.08,
-    fog: true,
-  });
-
-  const towerMat = new THREE.MeshStandardMaterial({
-    color: 0x26314f,
-    roughness: 0.6,
-    metalness: 0.2,
-    emissive: new THREE.Color(color),
-    emissiveIntensity: 0.18,
-    fog: true,
-  });
-
-  const base = new THREE.Mesh(new THREE.BoxGeometry(5, 2, 5), baseMat);
-  base.position.y = 1;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  g.add(base);
-
-  const tower1 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 4, 1.4), towerMat);
-  tower1.position.set(-1.4, 3, 0.8);
-  tower1.castShadow = true;
-  tower1.receiveShadow = true;
-  g.add(tower1);
-
-  const tower2 = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.2, 1.4), towerMat);
-  tower2.position.set(1.3, 2.6, -0.9);
-  tower2.castShadow = true;
-  tower2.receiveShadow = true;
-  g.add(tower2);
-
-  const beacon = new THREE.PointLight(color, 8, 18, 2);
-  beacon.position.set(0, 5, 0);
-  g.add(beacon);
-
-  return g;
-}
 
 const schools: School[] = [
   {
@@ -331,7 +289,7 @@ const schools: School[] = [
     details: ["First discovery", "Early foundation", "Appears from the fog"],
     anchorT: 0.22,
     side: -10,
-    object: createSchool(0x00eaff),
+    object: null,
     discovered: false,
   },
   {
@@ -340,7 +298,7 @@ const schools: School[] = [
     details: ["Second discovery", "STEM growth phase", "Further along the path"],
     anchorT: 0.55,
     side: 10,
-    object: createSchool(0xff2fd1),
+    object: null,
     discovered: false,
   },
   {
@@ -349,22 +307,72 @@ const schools: School[] = [
     details: ["Final discovery", "Advanced stage", "Deep in the journey"],
     anchorT: 0.86,
     side: -11,
-    object: createSchool(0x5b8cff),
+    object: null,
     discovered: false,
   },
 ];
 
-for (const school of schools) {
-  const p = path.getPointAt(school.anchorT);
-  const tangent = path.getTangentAt(school.anchorT).normalize();
-  const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+const SCHOOL_URL = "/static/school.glb";
+const SCHOOL_SCALE = 2.2;
+const SCHOOL_ROT_Y = 0;
 
-  school.object.position.copy(p.clone().add(sideVec.multiplyScalar(school.side)));
-  school.object.position.y = 0;
+loader.load(
+  SCHOOL_URL,
+  (gltf) => {
+    const schoolTemplate = gltf.scene;
+    prepareModel(schoolTemplate);
 
-  setModelOpacity(school.object, 0.05);
-  scene.add(school.object);
-}
+    // normalize template once
+    schoolTemplate.position.set(0, 0, 0);
+    schoolTemplate.rotation.set(0, 0, 0);
+    schoolTemplate.scale.set(1, 1, 1);
+
+    const templateBox = new THREE.Box3().setFromObject(schoolTemplate);
+    const templateCenter = new THREE.Vector3();
+    const templateSize = new THREE.Vector3();
+    templateBox.getCenter(templateCenter);
+    templateBox.getSize(templateSize);
+
+    schoolTemplate.position.sub(templateCenter);
+    schoolTemplate.position.y += templateSize.y / 2;
+
+    for (const school of schools) {
+      const schoolInstance = clone(schoolTemplate) as THREE.Group;
+      prepareModel(schoolInstance);
+
+      schoolInstance.scale.setScalar(SCHOOL_SCALE);
+      schoolInstance.rotation.y = SCHOOL_ROT_Y;
+
+      const p = path.getPointAt(school.anchorT);
+      const tangent = path.getTangentAt(school.anchorT).normalize();
+      const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+      schoolInstance.position.copy(p.clone().add(sideVec.multiplyScalar(school.side)));
+      schoolInstance.position.y = 5;
+
+      setModelOpacity(schoolInstance, 0.05);
+      scene.add(schoolInstance);
+
+      school.object! = schoolInstance;
+    }
+  },
+  undefined,
+  (err) => {
+    console.error("Error loading school GLB:", err);
+  }
+);
+
+// for (const school of schools) {
+//   const p = path.getPointAt(school.anchorT);
+//   const tangent = path.getTangentAt(school.anchorT).normalize();
+//   const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+//   school.object!.position.copy(p.clone().add(sideVec.multiplyScalar(school.side)));
+//   school.object!.position.y = 0;
+
+//   setModelOpacity(school.object!, 0.05);
+//   scene.add(school.object!);
+// }
 
 // =========================
 // ANIMATION
@@ -378,7 +386,7 @@ function animate() {
   requestAnimationFrame(animate);
 
   const targetT = getScrollProgress();
-  scrollT = THREE.MathUtils.lerp(scrollT, targetT, 0.06);
+  scrollT = THREE.MathUtils.lerp(scrollT, targetT, 0.02);
 
   const bikePos = path.getPointAt(scrollT);
   const aheadPos = path.getPointAt(Math.min(scrollT + 0.01, 1));
@@ -400,11 +408,11 @@ function animate() {
   let nearestDist = Infinity;
 
   for (const school of schools) {
-    const dist = bikeRoot.position.distanceTo(school.object.position);
+    const dist = bikeRoot.position.distanceTo(school.object!.position);
 
     const reveal = 1 - smoothstep(10, 28, dist);
     const opacity = THREE.MathUtils.clamp(0.03 + reveal * 0.97, 0.03, 1);
-    setModelOpacity(school.object, opacity);
+    setModelOpacity(school.object!, opacity);
 
     if (dist < 16 && dist < nearestDist) {
       nearestDist = dist;
