@@ -4,7 +4,7 @@ import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070a16);
-scene.fog = new THREE.Fog(0x0b1020, 12, 42);
+scene.fog = new THREE.Fog(0x0b1020, 3, 20);
 
 const camera = new THREE.PerspectiveCamera(
   55,
@@ -12,13 +12,13 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   300
 );
-// camera.position.set(0, 6, 18);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
+
 document.body.style.margin = "0";
 document.body.style.overflowY = "scroll";
 document.body.style.height = "500vh";
@@ -61,8 +61,7 @@ function setInfo(title: string, lines: string[]) {
 // =========================
 // LIGHTING
 // =========================
-const hemiLight = new THREE.HemisphereLight(0x7aa2ff, 0x05070f, 0.85);
-scene.add(hemiLight);
+scene.add(new THREE.HemisphereLight(0x7aa2ff, 0x05070f, 0.85));
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(8, 14, 10);
@@ -95,7 +94,6 @@ const floor = new THREE.Mesh(
   })
 );
 floor.rotation.x = -Math.PI / 2;
-floor.position.y = 0;
 floor.receiveShadow = true;
 scene.add(floor);
 
@@ -151,13 +149,14 @@ function prepareModel(root: THREE.Object3D) {
           cloned.fog = true;
           return cloned;
         });
-      } else if (child.material) {
+      } else {
         child.material = child.material.clone();
         child.material.fog = true;
       }
     }
   });
 }
+
 function setModelOpacity(root: THREE.Object3D, opacity: number) {
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
@@ -185,6 +184,12 @@ function smoothstep(edge0: number, edge1: number, x: number) {
   return t * t * (3 - 2 * t);
 }
 
+function pulse(a: number, b: number, c: number, d: number, x: number) {
+  const up = smoothstep(a, b, x);
+  const down = 1 - smoothstep(c, d, x);
+  return Math.min(up, down);
+}
+
 function getScrollProgress() {
   const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
   if (maxScroll <= 0) return 0;
@@ -199,19 +204,12 @@ const loader = new GLTFLoader();
 const bikeRoot = new THREE.Group();
 scene.add(bikeRoot);
 
-// correction wrapper for your actual bike model
 const bikeVisual = new THREE.Group();
 bikeRoot.add(bikeVisual);
-
 
 const cameraRig = new THREE.Object3D();
 bikeRoot.add(cameraRig);
 
-// tweak these for your cockpit
-const FPP_POS = new THREE.Vector3(0, 2.2, 0.3);
-const LOOK_AHEAD_DISTANCE = 12;
-const LOOK_UP_OFFSET = 1.4;
-// tune these if needed
 const BIKE_SCALE = 0.03;
 const BIKE_ROT_X = 0;
 const BIKE_ROT_Y = -Math.PI / 2;
@@ -219,8 +217,6 @@ const BIKE_ROT_Z = 0;
 const BIKE_OFFSET_X = 0;
 const BIKE_OFFSET_Y = 0;
 const BIKE_OFFSET_Z = 0;
-
-let bikeLoaded = false;
 
 loader.load(
   "/static/cha.glb",
@@ -242,16 +238,13 @@ loader.load(
     rawBike.position.y += size.y / 2;
 
     bikeVisual.add(rawBike);
-
     bikeVisual.scale.setScalar(BIKE_SCALE);
     bikeVisual.rotation.set(BIKE_ROT_X, BIKE_ROT_Y, BIKE_ROT_Z);
     bikeVisual.position.set(BIKE_OFFSET_X, BIKE_OFFSET_Y, BIKE_OFFSET_Z);
 
-    // first person camera position inside cockpit
+    // FPP position
     cameraRig.position.set(0, 2.9, -1.5);
-    cameraRig.rotation.y = Math.PI;
-
-    bikeLoaded = true;
+    cameraRig.rotation.set(0, Math.PI, 0);
 
     console.log("Bike size:", size);
   },
@@ -259,8 +252,6 @@ loader.load(
   (err) => console.error("Error loading bike:", err)
 );
 
-cameraRig.position.copy(FPP_POS);
-// bike glow lights
 const bikeGlow1 = new THREE.PointLight(0x00eaff, 4, 12, 2);
 bikeGlow1.position.set(0, 1.8, 2.5);
 bikeRoot.add(bikeGlow1);
@@ -270,7 +261,7 @@ bikeGlow2.position.set(0, 1.6, -2.0);
 bikeRoot.add(bikeGlow2);
 
 // =========================
-// PLACEHOLDER SCHOOLS
+// SCHOOLS
 // =========================
 type School = {
   id: string;
@@ -279,7 +270,6 @@ type School = {
   anchorT: number;
   side: number;
   object: THREE.Group | null;
-  discovered: boolean;
 };
 
 const schools: School[] = [
@@ -290,7 +280,6 @@ const schools: School[] = [
     anchorT: 0.22,
     side: -10,
     object: null,
-    discovered: false,
   },
   {
     id: "school2",
@@ -299,7 +288,6 @@ const schools: School[] = [
     anchorT: 0.55,
     side: 10,
     object: null,
-    discovered: false,
   },
   {
     id: "school3",
@@ -308,7 +296,6 @@ const schools: School[] = [
     anchorT: 0.86,
     side: -11,
     object: null,
-    discovered: false,
   },
 ];
 
@@ -322,7 +309,6 @@ loader.load(
     const schoolTemplate = gltf.scene;
     prepareModel(schoolTemplate);
 
-    // normalize template once
     schoolTemplate.position.set(0, 0, 0);
     schoolTemplate.rotation.set(0, 0, 0);
     schoolTemplate.scale.set(1, 1, 1);
@@ -348,12 +334,12 @@ loader.load(
       const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
       schoolInstance.position.copy(p.clone().add(sideVec.multiplyScalar(school.side)));
-      schoolInstance.position.y = 5;
+      schoolInstance.position.y = 7;
 
-      setModelOpacity(schoolInstance, 0.05);
+      setModelOpacity(schoolInstance, 0);
       scene.add(schoolInstance);
 
-      school.object! = schoolInstance;
+      school.object = schoolInstance;
     }
   },
   undefined,
@@ -362,68 +348,90 @@ loader.load(
   }
 );
 
-// for (const school of schools) {
-//   const p = path.getPointAt(school.anchorT);
-//   const tangent = path.getTangentAt(school.anchorT).normalize();
-//   const sideVec = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-
-//   school.object!.position.copy(p.clone().add(sideVec.multiplyScalar(school.side)));
-//   school.object!.position.y = 0;
-
-//   setModelOpacity(school.object!, 0.05);
-//   scene.add(school.object!);
-// }
-
 // =========================
-// ANIMATION
+// ANIMATION HELPERS
 // =========================
 let scrollT = 0;
 let activeSchoolId: string | null = null;
-const tempForward = new THREE.Vector3();
-const tempLook = new THREE.Vector3();
 
+const camWorldPos = new THREE.Vector3();
+const forwardLook = new THREE.Vector3();
+const schoolLook = new THREE.Vector3();
+const finalLook = new THREE.Vector3();
+const up = new THREE.Vector3(0, 1, 0);
+const targetQuat = new THREE.Quaternion();
+const lookMatrix = new THREE.Matrix4();
+
+// =========================
+// ANIMATE
+// =========================
 function animate() {
   requestAnimationFrame(animate);
 
   const targetT = getScrollProgress();
-  scrollT = THREE.MathUtils.lerp(scrollT, targetT, 0.02);
+  scrollT = THREE.MathUtils.lerp(scrollT, targetT, 0.04);
 
   const bikePos = path.getPointAt(scrollT);
   const aheadPos = path.getPointAt(Math.min(scrollT + 0.01, 1));
 
   bikeRoot.position.copy(bikePos);
-  bikeRoot.position.y += Math.sin(performance.now() * 0.003) * 0.02;
+  bikeRoot.position.y += Math.sin(performance.now() * 0.003) * 0.01;
   bikeRoot.lookAt(aheadPos);
-
-  const camWorldPos = new THREE.Vector3();
-  const camWorldQuat = new THREE.Quaternion();
-
-  cameraRig.getWorldPosition(camWorldPos);
-  cameraRig.getWorldQuaternion(camWorldQuat);
-
-  camera.position.copy(camWorldPos);
-  camera.quaternion.copy(camWorldQuat);
 
   let nearestSchool: School | null = null;
   let nearestDist = Infinity;
 
   for (const school of schools) {
-    const dist = bikeRoot.position.distanceTo(school.object!.position);
+    if (!school.object) continue;
+
+    const dist = bikeRoot.position.distanceTo(school.object.position);
 
     const reveal = 1 - smoothstep(10, 28, dist);
-    const opacity = THREE.MathUtils.clamp(0.03 + reveal * 0.97, 0.03, 1);
-    setModelOpacity(school.object!, opacity);
+    const opacity = THREE.MathUtils.clamp(reveal, 0, 1);
+    setModelOpacity(school.object, opacity);
 
-    if (dist < 16 && dist < nearestDist) {
+    if (dist < nearestDist) {
       nearestDist = dist;
       nearestSchool = school;
     }
   }
 
-  if (nearestSchool && activeSchoolId !== nearestSchool.id) {
+  cameraRig.getWorldPosition(camWorldPos);
+  camera.position.copy(camWorldPos);
+
+  // normal forward target
+  forwardLook.copy(path.getPointAt(Math.min(scrollT + 0.03, 1)));
+  forwardLook.y += 1.4;
+
+  // default school target = same as forward
+  schoolLook.copy(forwardLook);
+
+  // smooth focus weight exactly like the reference idea
+  let focusWeight = 0;
+
+  if (nearestSchool && nearestSchool.object) {
+    nearestSchool.object.getWorldPosition(schoolLook);
+    schoolLook.y += 2.5;
+
+    const a = Math.max(0, nearestSchool.anchorT - 0.08);
+    const b = Math.max(0, nearestSchool.anchorT - 0.03);
+    const c = Math.min(1, nearestSchool.anchorT + 0.03);
+    const d = Math.min(1, nearestSchool.anchorT + 0.10);
+
+    focusWeight = pulse(a, b, c, d, scrollT);
+  }
+
+  finalLook.lerpVectors(forwardLook, schoolLook, focusWeight);
+
+  lookMatrix.lookAt(camWorldPos, finalLook, up);
+  targetQuat.setFromRotationMatrix(lookMatrix);
+  camera.quaternion.slerp(targetQuat, 0.06);
+
+  // info panel can still switch normally
+  if (nearestSchool && focusWeight > 0.35 && activeSchoolId !== nearestSchool.id) {
     activeSchoolId = nearestSchool.id;
     setInfo(nearestSchool.title, nearestSchool.details);
-  } else if (!nearestSchool && activeSchoolId !== null) {
+  } else if (focusWeight < 0.1 && activeSchoolId !== null) {
     activeSchoolId = null;
     setInfo("TRAVEL MODE", [
       "Cruising through the fog",
@@ -437,6 +445,9 @@ function animate() {
 
 animate();
 
+// =========================
+// RESIZE
+// =========================
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
