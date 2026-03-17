@@ -114,14 +114,23 @@ scene.add(grid);
 // PATH
 // =========================
 const path = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(2, 1.1, -2),
-  new THREE.Vector3(4, 2.2, -8),
-  new THREE.Vector3(-6, -5.1, -28),
-  new THREE.Vector3(-12, 4.1, -78),
-  new THREE.Vector3(8, 4.3, -150),
-  new THREE.Vector3(-1, -2.1, -286),
-  new THREE.Vector3(0, 12.0, -325),
+  new THREE.Vector3(0, 2.4, 20),
+  new THREE.Vector3(3, 2.5, 0),
+  new THREE.Vector3(7, 2.6, -24),
+  new THREE.Vector3(2, 2.7, -48),
+  new THREE.Vector3(-8, 2.8, -78),
+  new THREE.Vector3(-10, 2.9, -112),
+  new THREE.Vector3(-4, 3.0, -148),
+  new THREE.Vector3(8, 3.2, -188),
+  new THREE.Vector3(12, 3.4, -228),
+  new THREE.Vector3(4, 3.7, -270),
+  new THREE.Vector3(-7, 4.2, -316),
+  new THREE.Vector3(-3, 4.8, -360),
+  new THREE.Vector3(0, 5.2, -410),
 ]);
+
+path.curveType = "catmullrom";
+path.tension = 0.45;
 
 path.curveType = "catmullrom";
 path.tension = 0.5;
@@ -368,19 +377,33 @@ const lookMatrix = new THREE.Matrix4();
 // =========================
 // ANIMATE
 // =========================
+const tempForwardOffset = new THREE.Vector3();
+const tempSchoolOffset = new THREE.Vector3();
+const desiredLook = new THREE.Vector3();
+const smoothedLook = new THREE.Vector3();
+const bikeTargetQuat = new THREE.Quaternion();
+const bikeLookMatrix = new THREE.Matrix4();
+
 function animate() {
   requestAnimationFrame(animate);
 
   const targetT = getScrollProgress();
-  scrollT = THREE.MathUtils.lerp(scrollT, targetT, 0.04);
+  scrollT = THREE.MathUtils.lerp(scrollT, targetT, 0.028);
 
   const bikePos = path.getPointAt(scrollT);
-  const aheadPos = path.getPointAt(Math.min(scrollT + 0.01, 1));
+  const aheadPos = path.getPointAt(Math.min(scrollT + 0.012, 1));
+  const farAheadPos = path.getPointAt(Math.min(scrollT + 0.06, 1));
 
+  // move bike
   bikeRoot.position.copy(bikePos);
-  bikeRoot.position.y += Math.sin(performance.now() * 0.003) * 0.01;
-  bikeRoot.lookAt(aheadPos);
+  bikeRoot.position.y += Math.sin(performance.now() * 0.0025) * 0.008;
 
+  // smooth bike rotation instead of hard lookAt
+  bikeLookMatrix.lookAt(bikeRoot.position, aheadPos, up);
+  bikeTargetQuat.setFromRotationMatrix(bikeLookMatrix);
+  bikeRoot.quaternion.slerp(bikeTargetQuat, 0.08);
+
+  // reveal / nearest school
   let nearestSchool: School | null = null;
   let nearestDist = Infinity;
 
@@ -389,9 +412,9 @@ function animate() {
 
     const dist = bikeRoot.position.distanceTo(school.object.position);
 
-    const reveal = 1 - smoothstep(10, 28, dist);
+    const reveal = 1 - smoothstep(22, 58, dist);
     const opacity = THREE.MathUtils.clamp(reveal, 0, 1);
-    // setModelOpacity(school.object, opacity);
+    setModelOpacity(school.object, opacity);
 
     if (dist < nearestDist) {
       nearestDist = dist;
@@ -399,42 +422,46 @@ function animate() {
     }
   }
 
+  // lock camera to cockpit
   cameraRig.getWorldPosition(camWorldPos);
   camera.position.copy(camWorldPos);
 
-  // normal forward target
-  forwardLook.copy(path.getPointAt(Math.min(scrollT + 0.03, 1)));
-  forwardLook.y += 1.4;
+  // forward target
+  forwardLook.copy(farAheadPos);
+  tempForwardOffset.set(0, 1.6, 0);
+  forwardLook.add(tempForwardOffset);
 
-  // default school target = same as forward
+  // school target defaults to forward
   schoolLook.copy(forwardLook);
 
-  // smooth focus weight exactly like the reference idea
   let focusWeight = 0;
 
   if (nearestSchool && nearestSchool.object) {
     nearestSchool.object.getWorldPosition(schoolLook);
-    schoolLook.y += 2.5;
+    tempSchoolOffset.set(0, 3.0, 0);
+    schoolLook.add(tempSchoolOffset);
 
-    const a = Math.max(0, nearestSchool.anchorT - 0.1);
-    const b = Math.max(0, nearestSchool.anchorT - 0.05);
-    const c = Math.min(1, nearestSchool.anchorT - 0.02);
-    const d = Math.min(1, nearestSchool.anchorT + 0.001);
+    const a = Math.max(0, nearestSchool.anchorT - 0.12);
+    const b = Math.max(0, nearestSchool.anchorT - 0.07);
+    const c = Math.min(1, nearestSchool.anchorT - 0.01);
+    const d = Math.min(1, nearestSchool.anchorT + 0.035);
 
     focusWeight = pulse(a, b, c, d, scrollT);
   }
 
-  finalLook.lerpVectors(forwardLook.add(new THREE.Vector3(0,1.2,0)), schoolLook.add(new THREE.Vector3(0,-2,0)), focusWeight);
+  // blend target cleanly
+  desiredLook.lerpVectors(forwardLook, schoolLook, focusWeight);
+  smoothedLook.lerp(desiredLook, 0.1);
 
-  lookMatrix.lookAt(camWorldPos, finalLook, up);
+  lookMatrix.lookAt(camera.position, smoothedLook, up);
   targetQuat.setFromRotationMatrix(lookMatrix);
-  camera.quaternion.slerp(targetQuat, 0.06);
+  camera.quaternion.slerp(targetQuat, 0.09);
 
-  // info panel can still switch normally
-  if (nearestSchool && focusWeight > 0.15 && activeSchoolId !== nearestSchool.id) {
+  // info panel
+  if (nearestSchool && focusWeight > 0.22 && activeSchoolId !== nearestSchool.id) {
     activeSchoolId = nearestSchool.id;
     setInfo(nearestSchool.title, nearestSchool.details);
-  } else if (focusWeight < 0.1 && activeSchoolId !== null) {
+  } else if (focusWeight < 0.08 && activeSchoolId !== null) {
     activeSchoolId = null;
     setInfo("TRAVEL MODE", [
       "Cruising through the fog",
